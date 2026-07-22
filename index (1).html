@@ -1,0 +1,2313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kiri Slaughterhouse — Task Execution</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --ink:#0a1826;
+    --steel:#2c4a68;
+    --steel-deep:#0c2038;
+    --blueprint:#eef2f6;
+    --line:#c9d4de;
+    --paper:#f6f8fa;
+    --accent:#5b7c99;
+    --ok:#2f8f5b;
+    --warn:#c8871a;
+    --danger:#b8433a;
+    --idle:#8ba0b3;
+    --started:#3a6a91;
+    --amber-chip:#fff3e0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',Roboto,Arial,sans-serif;}
+  body{
+    background:
+      linear-gradient(var(--blueprint) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--blueprint) 1px, transparent 1px) 0 0/28px 100%,
+      var(--paper);
+    color:var(--ink);
+    padding:28px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+
+  header{
+    background:var(--steel-deep);
+    color:#fff;
+    border-radius:4px;
+    padding:22px 28px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:14px;
+    margin-bottom:22px;
+    position:relative;
+    overflow:hidden;
+    border-bottom:4px solid var(--accent);
+  }
+  header::before{
+    content:"TASK REGISTER — KIRI SLAUGHTERHOUSE";
+    position:absolute;
+    right:-10px; top:-10px;
+    font-size:64px;
+    font-weight:800;
+    color:rgba(255,255,255,0.04);
+    letter-spacing:2px;
+    white-space:nowrap;
+    pointer-events:none;
+  }
+  header h1{font-size:20px; font-weight:700; letter-spacing:.3px;}
+  header .sub{font-size:12px; color:#a9c1d6; margin-top:2px;}
+  .sync-pill{
+    font-size:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18);
+    padding:6px 14px; border-radius:20px; display:flex; align-items:center; gap:8px;
+  }
+
+  .kpi-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:22px;}
+  .kpi{
+    background:#fff; border:1px solid var(--line); border-radius:4px; padding:14px 16px;
+    border-top:3px solid var(--idle);
+  }
+  .kpi[data-k="notstarted"]{border-top-color:var(--idle);}
+  .kpi[data-k="waitingmaterial"]{border-top-color:var(--warn);}
+  .kpi[data-k="readytostart"]{border-top-color:var(--started);}
+  .kpi[data-k="working"]{border-top-color:var(--warn);}
+  .kpi[data-k="waitinginspection"]{border-top-color:var(--danger);}
+  .kpi[data-k="punchlist"]{border-top-color:var(--idle);}
+  .kpi[data-k="pendingverify"]{border-top-color:#7b4fb0;}
+  .kpi[data-k="closed"]{border-top-color:var(--ok);}
+  .kpi .n{font-size:26px; font-weight:800; color:var(--steel-deep);}
+  .kpi .l{font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#5c7893; font-weight:700; margin-top:2px;}
+
+  .panel{background:#fff; border:1px solid var(--line); border-radius:4px; margin-bottom:20px; overflow:hidden;}
+  .panel-head{
+    padding:14px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;
+    background:linear-gradient(180deg,#fff,#f7fafc); flex-wrap:wrap; gap:10px;
+  }
+  .panel-head h2{font-size:15px; font-weight:700; color:var(--steel-deep); display:flex; align-items:center; gap:8px;}
+  .panel-body{padding:18px 20px;}
+
+  .filters{display:flex; gap:10px; flex-wrap:wrap;}
+  input, select, textarea{
+    font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:3px; background:#fff; color:var(--ink);
+  }
+  input:focus, select:focus, textarea:focus{outline:2px solid var(--steel); outline-offset:1px;}
+  textarea{width:100%; resize:vertical; min-height:70px;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.3px; color:#5c7893;
+    border-bottom:2px solid var(--line); padding:8px 10px; white-space:nowrap;
+  }
+  tbody td{padding:9px 10px; border-bottom:1px solid #eef3f7; vertical-align:top;}
+  tbody tr:hover{background:#f5f9fc;}
+  .row-pick{cursor:pointer;}
+
+  .status-chip{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:3px 10px; border-radius:20px;}
+  .status-chip.dot::before{content:""; width:8px; height:8px; border-radius:50%; display:inline-block;}
+  .st-notstarted{background:#eef2f6; color:#5c7893;}
+  .st-notstarted::before{background:var(--idle);}
+  .st-started{background:#e8f0f9; color:#204d75;}
+  .st-started::before{background:var(--started);}
+  .st-inprogress{background:#fdf2df; color:#8a5f0c;}
+  .st-inprogress::before{background:var(--warn);}
+  .st-delayed{background:#fbe9e7; color:#8c2f27;}
+  .st-delayed::before{background:var(--danger);}
+  .st-closed{background:#e6f4ec; color:#1f6b41;}
+  .st-closed::before{background:var(--ok);}
+  .st-waitingmaterial{background:var(--amber-chip); color:#8a5f0c;}
+  .st-waitingmaterial::before{background:var(--warn);}
+  .st-readytostart{background:#e8f0f9; color:#204d75;}
+  .st-readytostart::before{background:var(--started);}
+  .st-working{background:#fdf2df; color:#8a5f0c;}
+  .st-working::before{background:var(--warn);}
+  .st-waitinginspection{background:#fbe9e7; color:#8c2f27;}
+  .st-waitinginspection::before{background:var(--danger);}
+  .st-punchlist{background:#eef2f6; color:#5c7893;}
+  .st-punchlist::before{background:var(--idle);}
+
+  .mat-chip{font-size:11px; font-weight:700; padding:2px 8px; border-radius:3px; border:1px solid; display:inline-block;}
+  .mat-ready{color:#1f6b41; border-color:#bfe3cd; background:#eefaf2;}
+  .mat-notready{color:#8a5f0c; border-color:#f2dfb2; background:var(--amber-chip);}
+  .mat-na{color:#5c7893; border-color:var(--line); background:#eef2f6;}
+
+  .appr-notrequired{background:#eef2f6; color:#5c7893;} .appr-notrequired::before{background:var(--idle);}
+  .appr-pending{background:var(--amber-chip); color:#8a5f0c;} .appr-pending::before{background:var(--warn);}
+  .appr-approved{background:#e6f4ec; color:#1f6b41;} .appr-approved::before{background:var(--ok);}
+  .appr-returned{background:#fbe9e7; color:#8c2f27;} .appr-returned::before{background:var(--danger);}
+  .closeout-gate{border:1px solid #d8c2ea; border-radius:4px; background:#f4eefb; padding:14px 16px; margin:10px 0 4px;}
+  .closeout-gate-head{display:flex; align-items:flex-start; gap:10px;}
+  .closeout-gate-head i{color:#5a3a8c; font-size:16px; margin-top:2px;}
+  .closeout-gate-title{font-size:13px; font-weight:700; color:#3d2660;}
+  .closeout-gate-sub{font-size:12px; color:#5c4a75; margin-top:2px; line-height:1.5;}
+  .closeout-actions{display:flex; gap:10px; margin-top:12px;}
+  .closeout-actions button{flex:1; padding:10px; border-radius:3px; font-size:13px; font-weight:700; border:1px solid transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:7px;}
+  .btn-approve{background:var(--ok); color:#fff;}
+  .btn-approve:hover{background:#1a5c38;}
+  .btn-return{background:#fff; color:var(--danger); border-color:#e3b5b0 !important;}
+  .btn-return:hover{background:#fbeceb;}
+  .closeout-actions button:disabled{opacity:.5; cursor:not-allowed;}
+  .review-item{display:flex; align-items:center; justify-content:space-between; gap:14px; padding:11px 0; border-bottom:1px solid var(--line);}
+  .review-item:last-child{border-bottom:none;}
+  .review-item-main{font-size:13px; color:var(--steel-deep);}
+  .review-item-meta{font-size:11.5px; color:#5c7893; margin-top:3px;}
+
+  .photo-stage-tabs{display:flex; gap:8px; margin-bottom:10px;}
+  .photo-stage-tabs button{padding:6px 16px; border:1px solid var(--line); background:#fff; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; color:#3a536b;}
+  .photo-stage-tabs button.sel{background:var(--steel-deep); border-color:var(--steel-deep); color:#fff;}
+  .photo-dropzone{border:2px dashed var(--line); border-radius:6px; padding:20px; text-align:center; background:#fbfdfe; transition:.15s;}
+  .photo-dropzone.drag{border-color:var(--steel); background:var(--blueprint);}
+  .photo-dropzone-inner i{font-size:22px; color:#8ba0b3; margin-bottom:6px;}
+  .photo-dropzone-inner p{font-size:12.5px; color:#5c7893; margin-bottom:12px;}
+  .photo-dropzone-btns{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+  .photo-grid{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;}
+  .photo-thumb{position:relative; width:96px; height:96px; border-radius:4px; overflow:hidden; border:1px solid var(--line);}
+  .photo-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .photo-stage-badge{position:absolute; top:4px; left:4px; background:rgba(11,31,51,.75); color:#fff; font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:10px; z-index:2;}
+  .photo-remove{position:absolute; top:3px; right:3px; width:20px; height:20px; border:none; border-radius:50%; background:rgba(184,67,58,.9); color:#fff; font-size:11px; cursor:pointer; z-index:2; display:flex; align-items:center; justify-content:center;}
+  .photo-history{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+  .photo-history-link{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#204d75; text-decoration:none; border:1px solid var(--line); border-radius:20px; padding:4px 10px; background:#fff;}
+  .photo-history-link:hover{background:#f2f6f9;}
+
+  .form-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .form-grid.full{grid-template-columns:1fr;}
+  label{display:block; font-size:12px; font-weight:700; color:#334c63; margin-bottom:5px;}
+  .field input, .field select, .field textarea{width:100%;}
+  .req::after{content:" *"; color:var(--danger);}
+
+  .gate{
+    border:1px solid var(--line); border-left:5px solid var(--idle); border-radius:4px; padding:16px 18px; margin-top:6px; background:#fbfdfe;
+  }
+  .gate.ready{border-left-color:var(--ok); background:#f3fbf6;}
+  .gate.blocked{border-left-color:var(--warn); background:#fffaf1;}
+  .gate h3{font-size:13px; margin-bottom:8px; display:flex; align-items:center; gap:8px;}
+  .gate p{font-size:12px; color:#4c6579; margin-bottom:10px;}
+  .status-options{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;}
+  .status-options button{
+    padding:7px 14px; border:1px solid var(--line); background:#fff; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; color:#3a536b;
+  }
+  .status-options button.sel{background:var(--steel-deep); border-color:var(--steel-deep); color:#fff;}
+
+  .btn{border:none; border-radius:3px; padding:10px 18px; font-size:13px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:8px;}
+  .btn-primary{background:var(--steel-deep); color:#fff;}
+  .btn-primary:disabled{background:#9fb2c2; cursor:not-allowed;}
+  .btn-outline{background:#fff; border:1px solid var(--line); color:var(--steel-deep);}
+  .btn-outline:hover{background:#f2f6f9;}
+
+  .toast{
+    position:fixed; bottom:24px; right:24px; background:var(--steel-deep); color:#fff; padding:12px 18px; border-radius:4px;
+    font-size:13px; box-shadow:0 6px 20px rgba(0,0,0,.2); transform:translateY(20px); opacity:0; pointer-events:none; transition:.25s; max-width:360px; z-index:50;
+  }
+  .toast.show{transform:translateY(0); opacity:1;}
+  .toast.error{background:var(--danger);}
+  .toast.warn{background:var(--warn);}
+
+  .config-note{font-size:11px; color:#8398a9; margin-top:6px;}
+
+  .activity-log{
+    background:#f7fafc; border:1px solid var(--line); border-radius:3px; padding:10px 12px;
+    max-height:160px; overflow-y:auto; font-family:'Consolas','Courier New',monospace; font-size:11.5px;
+    color:#334c63; white-space:pre-wrap; line-height:1.5;
+  }
+  .activity-log .empty-log{color:#8398a9; font-style:italic;}
+  .meta-row{display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:#5c7893; margin:8px 0 4px;}
+  .meta-row span b{color:#334c63;}
+  .status-change-flag{
+    display:none; align-items:center; gap:8px; background:var(--amber-chip); border:1px solid #f2dfb2;
+    color:#8a5f0c; font-size:12px; font-weight:600; padding:8px 12px; border-radius:3px; margin-top:8px;
+  }
+  .status-change-flag.show{display:flex;}
+  .help{font-size:12px; color:#5c7893; margin-top:6px;}
+  .empty{padding:30px; text-align:center; color:#8398a9; font-size:13px;}
+
+  /* Role toggle */
+  .role-bar{display:flex; align-items:center; gap:12px; background:#fff; border:1px solid var(--line); border-radius:4px; padding:10px 16px; margin-bottom:20px; flex-wrap:wrap;}
+  .role-bar .role-label{font-size:12px; font-weight:700; color:#5c7893; text-transform:uppercase; letter-spacing:.3px;}
+  .role-toggle{display:flex; gap:6px;}
+  .role-toggle button{padding:7px 16px; border:1px solid var(--line); background:#fff; border-radius:20px; font-size:12px; font-weight:700; cursor:pointer; color:#3a536b;}
+  .role-toggle button.sel{background:var(--steel-deep); border-color:var(--steel-deep); color:#fff;}
+  .role-note{font-size:11.5px; color:#8398a9;}
+
+  /* Progress-state chips */
+  .ps-chip{display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap;}
+  .ps-chip::before{content:""; width:7px; height:7px; border-radius:50%; display:inline-block;}
+  .ps-ready{background:#e8f0f9; color:#204d75;} .ps-ready::before{background:var(--started);}
+  .ps-working{background:#fdf2df; color:#8a5f0c;} .ps-working::before{background:var(--warn);}
+  .ps-material{background:var(--amber-chip); color:#8a5f0c;} .ps-material::before{background:var(--warn);}
+  .ps-inspection{background:#fbe9e7; color:#8c2f27;} .ps-inspection::before{background:var(--danger);}
+  .ps-punch{background:#eef2f6; color:#5c7893;} .ps-punch::before{background:var(--idle);}
+  .ps-closed{background:#e6f4ec; color:#1f6b41;} .ps-closed::before{background:var(--ok);}
+  .ps-none{background:#eef2f6; color:#8398a9;} .ps-none::before{background:var(--idle);}
+
+  .st-pendingverify{background:#eee6fb; color:#5a3a8c;}
+  .st-pendingverify::before{background:#7b4fb0;}
+
+  .driver-chip{font-size:11px; font-weight:700; color:#334c63; background:#eef2f6; padding:2px 8px; border-radius:3px; display:inline-block;}
+
+  .labor-cell .b{font-size:11.5px; color:#5c7893;}
+  .labor-cell .a{font-size:11.5px; color:#334c63; font-weight:700;}
+  .labor-cell .v{font-size:11px; font-weight:700; padding:1px 6px; border-radius:3px; display:inline-block; margin-top:2px;}
+  .v-over{background:#fbe9e7; color:#8c2f27;}
+  .v-under{background:#e6f4ec; color:#1f6b41;}
+  .v-even{background:#eef2f6; color:#5c7893;}
+
+  .verify-box{border:1px solid var(--line); border-left:5px solid #7b4fb0; border-radius:4px; padding:16px 18px; margin-top:18px; background:#faf8fd;}
+  .verify-box h3{font-size:13px; margin-bottom:8px; display:flex; align-items:center; gap:8px; color:#5a3a8c;}
+  .verify-box p{font-size:12px; color:#4c6579; margin-bottom:10px;}
+  .verify-box.locked{opacity:.6;}
+  .gc-fields.locked{opacity:.55;}
+
+  .login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:
+      linear-gradient(var(--blueprint) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--blueprint) 1px, transparent 1px) 0 0/28px 100%,
+      var(--paper);
+    padding:28px;
+  }
+  .login-card{
+    background:#fff; border:1px solid var(--line); border-radius:4px;
+    padding:32px 30px; width:100%; max-width:380px;
+    box-shadow:0 2px 10px rgba(15,43,69,.08);
+  }
+  .login-card h1{font-size:17px; color:var(--steel-deep); display:flex; align-items:center; gap:9px; margin-bottom:4px;}
+  .login-card .sub{font-size:12px; color:#5c7893; margin-bottom:22px;}
+  .login-card .field{margin-bottom:14px;}
+  .login-card label{display:block; font-size:12px; font-weight:700; color:var(--steel-deep); margin-bottom:5px;}
+  .login-card input{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:3px; font-size:14px;
+  }
+  .login-card .btn-primary{width:100%; justify-content:center; margin-top:6px; padding:10px;}
+  .login-error{
+    background:#fbeceb; border:1px solid #e3b5b0; color:var(--danger);
+    font-size:12px; padding:9px 11px; border-radius:3px; margin-bottom:14px; display:none;
+  }
+  .login-error.show{display:block;}
+  .session-bar{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .session-bar .who{font-size:12px; font-weight:700; color:var(--steel-deep);}
+  .session-bar .who i{color:var(--ok); margin-right:5px;}
+  .verified-pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#1f6b41; background:#e6f4ec; padding:5px 12px; border-radius:20px;}
+  .missing-pill{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#8c2f27; background:#fbe9e7; padding:5px 12px; border-radius:20px;}
+
+  .tab-row{display:flex; gap:8px; flex-wrap:wrap; padding:14px 20px 0; }
+  .tab-row button{padding:8px 16px; border:1px solid var(--line); background:#f7fafc; border-radius:20px 20px 0 0; font-size:12.5px; font-weight:700; cursor:pointer; color:#5c7893; border-bottom:none; position:relative; top:1px;}
+  .tab-row button.sel{background:#fff; color:var(--steel-deep); border-color:var(--line); border-bottom:1px solid #fff;}
+  .report-view{display:none;}
+  .report-view.show{display:block;}
+  .report-note{font-size:12px; color:#5c7893; padding:12px 20px 0;}
+  .labor-cost-totals{display:flex; gap:12px; flex-wrap:wrap; padding:12px 20px 0;}
+  .labor-cost-totals .card{
+    background:#f7fafc; border:1px solid var(--line); border-radius:4px; padding:10px 14px; flex:1; min-width:200px;
+  }
+  .labor-cost-totals .card .u{font-size:11px; text-transform:uppercase; letter-spacing:.3px; color:#5c7893; font-weight:700;}
+  .labor-cost-totals .card .row{display:flex; justify-content:space-between; font-size:13px; margin-top:4px;}
+  .labor-cost-totals .card .row b{color:var(--steel-deep);}
+  .labor-cost-totals .card .var{font-size:12px; font-weight:700; margin-top:6px; padding:2px 8px; border-radius:3px; display:inline-block;}
+  .lc-var-cell{font-weight:700;}
+
+  @media(max-width:720px){ .form-grid{grid-template-columns:1fr;} }
+
+  /* ===================== MODULE NAV ===================== */
+  .module-nav{ display:flex; gap:8px; margin-bottom:18px; }
+  .module-tab{
+    flex:1; text-align:left; padding:14px 18px; border-radius:6px; border:1px solid var(--line);
+    background:#fff; color:var(--steel); font-size:14px; font-weight:600; cursor:pointer;
+    display:flex; align-items:center; gap:10px; transition:background .15s, color .15s, border-color .15s;
+  }
+  .module-tab i{ font-size:15px; }
+  .module-tab:hover{ background:var(--blueprint); }
+  .module-tab.active{ background:var(--steel-deep); color:#fff; border-color:var(--steel-deep); }
+
+  /* =================== GOVERNANCE MODULE =================== */
+  .gov-banner{
+    background:#fdf2df; border:1px solid #e9c98a; color:#7a4d0c; font-weight:600; font-size:13px;
+    padding:12px 18px; border-radius:6px; margin-bottom:16px; display:flex; align-items:center; gap:10px;
+  }
+  .gov-header-card{
+    background:#fff; border:1px solid var(--line); border-radius:8px; padding:20px 22px; margin-bottom:18px;
+  }
+  .gov-header-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+  .gov-header-card h2{ font-size:19px; color:var(--steel-deep); margin-bottom:4px; }
+  .gov-overall-pct{ font-size:30px; font-weight:800; color:var(--accent); line-height:1; }
+  .gov-progress-track{ background:var(--blueprint); border-radius:20px; height:10px; margin:14px 0 12px; overflow:hidden; }
+  .gov-progress-fill{ background:linear-gradient(90deg, var(--accent), var(--started)); height:100%; border-radius:20px; transition:width .3s; }
+  .gov-block-summary{ display:flex; gap:22px; flex-wrap:wrap; font-size:12.5px; color:var(--steel); }
+  .gov-block-summary b{ color:var(--ink); }
+
+  .gov-layout{ display:grid; grid-template-columns:1fr 340px; gap:18px; align-items:start; }
+  @media(max-width:960px){ .gov-layout{ grid-template-columns:1fr; } }
+
+  .gov-block{ background:#fff; border:1px solid var(--line); border-radius:8px; margin-bottom:14px; overflow:hidden; }
+  .gov-block-head{
+    display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 18px; cursor:pointer;
+    background:var(--blueprint); user-select:none;
+  }
+  .gov-block-head-left{ display:flex; align-items:center; gap:10px; }
+  .gov-block-head .chev{ transition:transform .2s; color:var(--steel); }
+  .gov-block.collapsed .chev{ transform:rotate(-90deg); }
+  .gov-block-title{ font-weight:700; font-size:13.5px; color:var(--steel-deep); }
+  .gov-block-sub{ font-size:11.5px; color:#5c7893; margin-top:2px; }
+  .gov-block-pct{ font-size:12.5px; font-weight:700; color:var(--accent); white-space:nowrap; }
+  .gov-block-body{ padding:16px 20px 4px; }
+  .gov-block.collapsed .gov-block-body{ display:none; }
+
+  .gov-timeline{ position:relative; padding-left:26px; }
+  .gov-timeline::before{ content:""; position:absolute; left:8px; top:6px; bottom:6px; width:2px; background:var(--line); }
+  .gov-step{ position:relative; padding-bottom:18px; cursor:pointer; }
+  .gov-step:last-child{ padding-bottom:2px; }
+  .gov-step::before{
+    content:""; position:absolute; left:-26px; top:3px; width:14px; height:14px; border-radius:50%;
+    background:#fff; border:3px solid var(--idle);
+  }
+  .gov-step.status-notstarted::before{ border-color:var(--idle); }
+  .gov-step.status-inprogress::before{ border-color:var(--warn); background:var(--warn); }
+  .gov-step.status-complete::before{ border-color:var(--ok); background:var(--ok); }
+  .gov-step-card{
+    background:#fbfcfd; border:1px solid var(--line); border-radius:6px; padding:11px 14px; transition:border-color .15s, background .15s;
+  }
+  .gov-step-card:hover{ border-color:var(--accent); background:#fff; }
+  .gov-step-card.selected{ border-color:var(--accent); background:#fff; box-shadow:0 0 0 2px rgba(91,124,153,.18); }
+  .gov-step-top{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .gov-step-id{ font-size:11px; font-weight:700; color:var(--accent); letter-spacing:.3px; }
+  .gov-step-name{ font-size:13.5px; font-weight:600; color:var(--ink); margin-top:2px; }
+  .gov-step-meta{ font-size:11px; color:#7c8fa0; margin-top:5px; display:flex; gap:12px; flex-wrap:wrap; }
+  .gov-step-status{
+    font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap;
+    background:#eef2f6; color:#5c7893;
+  }
+  .gov-step.status-inprogress .gov-step-status{ background:var(--amber-chip); color:#8a5f0c; }
+  .gov-step.status-complete .gov-step-status{ background:#e6f4ec; color:#1f6b41; }
+
+  .gov-detail-panel{
+    background:#fff; border:1px solid var(--line); border-radius:8px; padding:18px 20px; position:sticky; top:18px;
+  }
+  .gov-detail-panel h3{ font-size:15px; color:var(--steel-deep); margin-bottom:2px; }
+  .gov-detail-panel .gov-detail-sub{ font-size:11.5px; color:#7c8fa0; margin-bottom:14px; }
+  .gov-detail-row{ display:flex; justify-content:space-between; gap:10px; font-size:12.5px; padding:7px 0; border-bottom:1px dashed var(--line); }
+  .gov-detail-row span:first-child{ color:#7c8fa0; }
+  .gov-detail-row span:last-child{ font-weight:600; color:var(--ink); text-align:right; }
+  .gov-detail-row.muted span:first-child{ color:#aab6c2; }
+  .gov-detail-row.muted span:last-child{ font-weight:500; color:#9aa8b5; }
+  .gov-detail-panel .field{ margin-top:12px; }
+  .gov-detail-panel .field label{ font-size:11.5px; font-weight:700; color:var(--steel); display:block; margin-bottom:5px; }
+  .gov-na-note{ font-size:11px; color:#8398a9; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <h1><i class="fas fa-drafting-compass"></i> Kiri Slaughterhouse — Task Execution</h1>
+    <div class="sub">Sign in with your party's login to select tasks, log progress, or set approvals.</div>
+    <div class="login-error" id="loginError"></div>
+    <div class="field">
+      <label>Username</label>
+      <input id="loginUsername" autocomplete="username" placeholder="party username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="party password">
+    </div>
+    <button class="btn btn-primary" id="loginBtn" onclick="doLogin()"><i class="fas fa-right-to-bracket"></i> Log In</button>
+  </div>
+</div>
+
+<div class="wrap" id="appRoot" style="display:none;">
+
+  <header>
+    <div>
+      <h1><i class="fas fa-drafting-compass"></i>&nbsp; Task Execution — Kiri Slaughterhouse</h1>
+      <div class="sub">Owner Governance View · Start · Update · Verify · Report</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <span class="config-note" id="lastSyncedNote" style="color:#a9c1d6;"></span>
+      <button type="button" class="btn btn-outline" style="padding:7px 14px; font-size:12px;" onclick="loadAll()"><i class="fas fa-rotate"></i> Refresh</button>
+      <div class="sync-pill" id="syncPill"><i class="fas fa-circle-notch fa-spin"></i> Connecting to Task Register…</div>
+    </div>
+  </header>
+
+  <div class="module-nav" id="moduleNav">
+    <button type="button" class="module-tab active" data-view="gy" onclick="switchModule('gy')">
+      <i class="fas fa-helmet-safety"></i> Kiri Slaughterhouse — Construction
+    </button>
+    <button type="button" class="module-tab" data-view="phase1" onclick="switchModule('phase1')">
+      <i class="fas fa-scale-balanced"></i> Kiri Slaughterhouse Governance Spine
+    </button>
+  </div>
+
+  <div class="role-bar">
+    <div class="session-bar">
+      <span class="who" id="sessionLabel"><i class="fas fa-circle-user"></i> —</span>
+      <button type="button" class="btn btn-outline" style="padding:5px 12px; font-size:12px;" onclick="logout()"><i class="fas fa-right-from-bracket"></i> Log Out</button>
+    </div>
+    <span class="role-note" id="roleNote"></span>
+  </div>
+
+  <div id="gyView">
+
+  <div class="panel" id="reviewQueuePanel" style="display:none; border-left:5px solid #5a3a8c;">
+    <div class="panel-head">
+      <h2><i class="fas fa-flag-checkered"></i> Awaiting Your Review <span id="reviewQueueCount" class="ps-chip appr-pending" style="margin-left:6px;">0</span></h2>
+    </div>
+    <div class="panel-body" id="reviewQueueBody" style="padding:14px 20px;"></div>
+  </div>
+
+  <div class="panel" id="recentDecisionsPanel" style="display:none;">
+    <div class="panel-head">
+      <h2><i class="fas fa-clock-rotate-left"></i> Recently Decided</h2>
+    </div>
+    <div class="panel-body" id="recentDecisionsBody" style="padding:0;">
+      <table>
+        <thead><tr><th>Task</th><th>Decision</th><th>By</th><th>When</th><th>Note / Reason</th></tr></thead>
+        <tbody id="recentDecisionsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi" data-k="notstarted"><div class="n" id="kpiNotStarted">–</div><div class="l">Not Started</div></div>
+    <div class="kpi" data-k="waitingmaterial"><div class="n" id="kpiWaitingMaterial">–</div><div class="l">Waiting Material</div></div>
+    <div class="kpi" data-k="readytostart"><div class="n" id="kpiReadyToStart">–</div><div class="l">Ready to Start</div></div>
+    <div class="kpi" data-k="working"><div class="n" id="kpiWorking">–</div><div class="l">Working</div></div>
+    <div class="kpi" data-k="waitinginspection"><div class="n" id="kpiWaitingInspection">–</div><div class="l">Waiting Inspection</div></div>
+    <div class="kpi" data-k="punchlist"><div class="n" id="kpiPunchList">–</div><div class="l">Punch List</div></div>
+    <div class="kpi" data-k="pendingverify"><div class="n" id="kpiPendingVerify">–</div><div class="l">Pending Owner Verification</div></div>
+    <div class="kpi" data-k="closed"><div class="n" id="kpiClosed">–</div><div class="l">Verified / Closed</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2><i class="fas fa-list-check"></i> Task Register (Owner View)</h2>
+      <div class="filters">
+        <input type="text" id="taskSearch" placeholder="Search task name / ID…" oninput="renderTable()">
+        <select id="statusFilter" onchange="renderTable()">
+          <option value="all">All statuses</option>
+          <option value="Not Started">Not Started</option>
+          <option value="Waiting Material">Waiting Material</option>
+          <option value="Ready to Start">Ready to Start</option>
+          <option value="Working">Working</option>
+          <option value="Waiting Inspection">Waiting Inspection</option>
+          <option value="Punch List">Punch List</option>
+          <option value="Pending Owner Verification">Pending Owner Verification</option>
+          <option value="Verified / Closed">Verified / Closed</option>
+        </select>
+      </div>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <div style="max-height:420px; overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Task ID</th><th>Task Name</th><th>Division</th><th>Execution Status</th><th>Approval</th><th>Driver</th>
+              <th>Material</th><th>% Done</th><th>Planned Start</th><th>Planned Finish</th><th>Labor (Planned / Actual)</th>
+            </tr>
+          </thead>
+          <tbody id="taskTableBody">
+            <tr><td colspan="11" class="empty">Loading tasks…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2><i class="fas fa-pen-to-square"></i> Start / Update a Task</h2></div>
+    <div class="panel-body">
+      <div class="form-grid full" style="margin-bottom:16px;">
+        <div class="field">
+          <label>Select a task from the register</label>
+          <select id="taskPicker" onchange="pickTask(this.value)">
+            <option value="">— choose a task —</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="editForm" style="display:none;">
+
+        <!-- ACCOUNTABILITY: who created / who last touched this task -->
+        <div class="meta-row" id="metaRow">
+          <span>Created by: <b id="metaCreatedBy">—</b></span>
+          <span>Created: <b id="metaCreatedAt">—</b></span>
+          <span>Last updated by: <b id="metaUpdatedBy">—</b></span>
+          <span>Last updated: <b id="metaUpdatedAt">—</b></span>
+          <span id="metaSubmittedWrap" style="display:none;">Submitted for review by: <b id="metaSubmittedBy">—</b> on <b id="metaSubmittedAt">—</b></span>
+        </div>
+
+        <div class="gc-fields" id="gcFieldsA">
+        <div class="form-grid">
+          <div class="field"><label>Assigned To</label><input id="fAssigned" placeholder="e.g., Framing Crew 2"></div>
+          <div class="field"><label>Driver / Accountable Party</label><input id="fDriver" placeholder="e.g., Electrical Contractor"></div>
+          <div class="field"><label>Planned Start</label><input type="date" id="fStart"></div>
+          <div class="field"><label>Planned Finish</label><input type="date" id="fFinish"></div>
+          <div class="field"><label>Actual Start</label><input type="date" id="fActualStart"></div>
+          <div class="field"><label>Actual Finish</label><input type="date" id="fActualFinish"></div>
+          <div class="field"><label class="req">Execution Status</label>
+            <select id="fStatus" onchange="handleStatusChange()">
+              <option>Not Started</option>
+              <option>Waiting Material</option>
+              <option>Ready to Start</option>
+              <option>Working</option>
+              <option>Waiting Inspection</option>
+              <option>Punch List</option>
+              <option>Pending Owner Verification</option>
+              <option value="Verified / Closed" disabled>Verified / Closed (set automatically when approved)</option>
+            </select>
+            <div class="help">One field, GC-controlled: what's actually happening in the field right now. Set it to "Pending Owner Verification" when the work is done — that puts it in front of the Owner's Representative. "Verified / Closed" is set automatically once they approve it; you can't set it yourself.</div>
+          </div>
+          <div class="field"><label>% Complete</label><input type="number" id="fPercent" min="0" max="100" value="0"></div>
+        </div>
+
+        <div class="form-grid" style="margin-top:14px;">
+          <div class="field"><label>Planned Labor <span style="font-weight:400;color:#8398a9;">(baseline)</span></label>
+            <div style="display:flex; gap:8px;">
+              <input id="fLaborPlanned" placeholder="e.g., 12" style="flex:1;">
+              <select id="fLaborUnit" style="width:130px;">
+                <option value="Crew-Days">Crew-Days</option>
+                <option value="Crew-Hours">Crew-Hours</option>
+                <option value="$">$</option>
+              </select>
+            </div>
+            <div class="help">Pulled from the baseline. Edit only if the baseline itself needs correcting.</div>
+          </div>
+          <div class="field"><label>Actual Labor Used</label>
+            <input id="fLaborActual" placeholder="e.g., 14" oninput="renderLaborVariancePreview()">
+            <div class="help" id="laborVariancePreview">Enter actual crew-days/hours/$ consumed so far.</div>
+          </div>
+        </div>
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+          <label class="req">Your Name (accountability)</label>
+          <input id="fUpdatedBy" placeholder="e.g., Alex Doe">
+          <div class="help">Recorded with every save — who created a task and who last touched it should never be a mystery.</div>
+        </div>
+
+        <div class="gc-fields" id="gcFieldsB">
+        <div id="statusChangeFlag" class="status-change-flag">
+          <i class="fas fa-clock-rotate-left"></i>
+          <span>Status is changing from <b id="scfFrom">—</b> to <b id="scfTo">—</b>. A note explaining this change is required below, and it'll be timestamped automatically.</span>
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+          <label id="fNotesLabel">Add a note (optional)</label>
+          <textarea id="fNotes" placeholder="e.g., Framing crew mobilized this morning; expect layout complete by EOD."></textarea>
+        </div>
+
+        <div style="margin-top:10px;">
+          <label>Activity Log <span style="font-weight:400; color:#8398a9;">(read-only — every save appends a new timestamped, attributed entry; older entries are never overwritten)</span></label>
+          <div class="activity-log" id="activityLog"><span class="empty-log">No activity logged yet.</span></div>
+        </div>
+
+        </div>
+
+        <div style="margin-top:18px;" id="ownerNotesWrap">
+          <label>Owner's Representative Notes <span style="font-weight:400; color:#8398a9;">(observations, directives, reasons for delay — separate from the GC's log above)</span></label>
+          <textarea id="fOwnerNotes" placeholder="e.g., Awaiting rebar inspection before proceeding; GC notified." disabled></textarea>
+          <div class="help" id="ownerNotesHelp">Only editable when viewing as the Owner's Representative.</div>
+          <div style="margin-top:8px;">
+            <label>Owner's Rep Log <span style="font-weight:400; color:#8398a9;">(read-only history)</span></label>
+            <div class="activity-log" id="ownerNotesLog"><span class="empty-log">No owner notes logged yet.</span></div>
+          </div>
+        </div>
+
+        <div class="gc-fields" id="gcFieldsC">
+        <!-- MATERIAL GATE -->
+        <div style="margin-top:18px;">
+          <label class="req">Material Status Check</label>
+          <p class="help">Before this task can be submitted, confirm the material status. This pulls from the Material system's GC Requests log — update it there if it's out of date.</p>
+          <div class="status-options" id="statusOptions">
+            <button type="button" data-v="Not Required" onclick="setMatStatus('Not Required')">Not required for this task</button>
+            <button type="button" data-v="Not available" onclick="setMatStatus('Not available')">Not available</button>
+            <button type="button" data-v="In warehouse" onclick="setMatStatus('In warehouse')">In warehouse</button>
+            <button type="button" data-v="In transit" onclick="setMatStatus('In transit')">In transit</button>
+            <button type="button" data-v="Ready" onclick="setMatStatus('Ready')">Ready</button>
+          </div>
+          <div class="gate" id="gateBox">
+            <h3 id="gateTitle"><i class="fas fa-circle-info"></i> Select a material status above</h3>
+            <p id="gateHelp">Choosing "Ready" or "Not required" allows a normal submit. Any other status requires you to explain your plan for starting without material on hand.</p>
+            <div id="explainWrap" style="display:none;">
+              <label class="req">Explain your plan</label>
+              <textarea id="fExplain" placeholder="e.g., Starting layout and prep work while steel is in transit; framing crew will hold until delivery confirmed on [date]."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- PHOTO RECORD -->
+        <div style="margin-top:18px;">
+          <label>Attach Photos <span style="font-weight:400; color:#8398a9;">(Before / During / After — this becomes the permanent project photo record)</span></label>
+          <div class="photo-stage-tabs" id="photoStageTabs">
+            <button type="button" data-stage="Before" class="sel" onclick="setPhotoStage('Before')">Before</button>
+            <button type="button" data-stage="During" onclick="setPhotoStage('During')">During</button>
+            <button type="button" data-stage="After" onclick="setPhotoStage('After')">After</button>
+          </div>
+          <div class="photo-dropzone" id="photoDropzone">
+            <input type="file" id="photoCameraInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoFiles(this.files)">
+            <input type="file" id="photoUploadInput" accept="image/*" multiple style="display:none" onchange="handlePhotoFiles(this.files)">
+            <div class="photo-dropzone-inner">
+              <i class="fas fa-camera-retro"></i>
+              <p>Drag &amp; drop photos here for the <b id="photoStageNote">Before</b> stage</p>
+              <div class="photo-dropzone-btns">
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('photoCameraInput').click()"><i class="fas fa-camera"></i> Take Picture</button>
+                <button type="button" class="btn btn-outline" onclick="document.getElementById('photoUploadInput').click()"><i class="fas fa-upload"></i> Upload</button>
+              </div>
+            </div>
+          </div>
+          <div class="photo-grid" id="photoGrid"></div>
+          <div class="help" style="margin-top:10px;">Photos already on file for this task:</div>
+          <div class="photo-history" id="photoHistory"><span class="empty-log">No photos on file yet.</span></div>
+        </div>
+        </div>
+
+        <!-- OWNER / OR APPROVAL -->
+        <div class="verify-box" id="verifyBox">
+          <h3 id="verifyTitle"><i class="fas fa-stamp"></i> Approval Status</h3>
+          <p id="verifyHelp">Execution Status (above) is set by the GC and tracks field progress. Approval Status is separate and owner-controlled. Approving a task automatically closes it (Execution Status → Verified / Closed); returning it automatically reopens it to Punch List for the GC.</p>
+
+          <div class="closeout-gate" id="closeoutGate" style="display:none;">
+            <div class="closeout-gate-head">
+              <i class="fas fa-flag-checkered"></i>
+              <div>
+                <div class="closeout-gate-title">Ready for your review</div>
+                <div class="closeout-gate-sub">The GC marked this task <b>Pending Owner Verification</b>. Check scope, quality, owner-furnished materials, and required documentation, then approve to close it or return it to the GC with an explanation.</div>
+              </div>
+            </div>
+            <div class="closeout-actions">
+              <button type="button" id="approveCloseBtn" onclick="decideCloseout('Approved')"><i class="fas fa-circle-check"></i> Approve Close</button>
+              <button type="button" id="returnToGcBtn" class="btn-return" onclick="decideCloseout('Returned')"><i class="fas fa-rotate-left"></i> Return to GC</button>
+            </div>
+          </div>
+
+          <div id="verifyStatusPill"></div>
+          <div class="field" style="margin-top:12px;">
+            <label>Approval Status</label>
+            <select id="fApprovalStatus" onchange="handleApprovalStatusChange()">
+              <option>Not Required</option>
+              <option>Pending</option>
+              <option>Approved</option>
+              <option>Returned</option>
+            </select>
+          </div>
+          <div class="form-grid" style="margin-top:12px; display:none;" id="verifyFields">
+            <div class="field"><label class="req">Verified By</label><input id="fVerifiedBy" placeholder="e.g., Jordan Reyes (Owner's Rep)"></div>
+            <div class="field"><label>Verified At</label><input id="fVerifiedAt" disabled placeholder="set automatically on approve"></div>
+          </div>
+          <div class="field" id="rejectReasonWrap" style="display:none; margin-top:12px;">
+            <label class="req">Comments — required when returning to the GC</label>
+            <textarea id="fRejectReason" placeholder="Explain what needs to be corrected before this can be resubmitted."></textarea>
+          </div>
+          <button class="btn btn-primary" id="verifyBtn" onclick="saveApprovalStatus()" style="margin-top:10px; background:#5a3a8c;"><i class="fas fa-stamp"></i> Save Approval Status</button>
+          <div class="help" id="verifyLockedNote" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="gc-fields" id="gcFieldsD" style="margin-top:18px; display:flex; gap:10px;">
+          <button class="btn btn-primary" id="submitBtn" onclick="submitTask()"><i class="fas fa-check"></i> Submit Task Update</button>
+          <button class="btn btn-outline" onclick="clearForm()">Cancel</button>
+        </div>
+        <div class="config-note">Writes to the Task Register sheet via the Apps Script endpoint. "Status" holds the single Execution Status, set by the logged-in GC. Approval Status and Owner's Rep Notes are set by the logged-in Owner's Representative. Login is required to submit any update — see the Apps Script setup notes for how the two party logins are configured.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2><i class="fas fa-chart-line"></i> Executive Reporting</h2></div>
+    <div class="tab-row" id="reportTabs">
+      <button type="button" data-tab="field" onclick="setReportTab('field')">Field Progress</button>
+      <button type="button" data-tab="accountability" onclick="setReportTab('accountability')">Accountability</button>
+      <button type="button" data-tab="ownerrep" onclick="setReportTab('ownerrep')">Owner's Rep Report</button>
+      <button type="button" data-tab="verify" onclick="setReportTab('verify')">Verification Report</button>
+      <button type="button" data-tab="labor" onclick="setReportTab('labor')">Labor &amp; Cost</button>
+    </div>
+    <div class="panel-body" style="padding:0;">
+
+      <div class="report-view" id="reportField">
+        <div class="report-note">Every task by Execution Status — the single field-condition status that answers "what's actually happening out there."</div>
+        <table>
+          <thead><tr><th>Execution Status</th><th>Tasks</th></tr></thead>
+          <tbody id="fieldProgressBody"></tbody>
+        </table>
+      </div>
+
+      <div class="report-view" id="reportAccountability">
+        <div class="report-note">Assigns responsibility for every open task and flags who's carrying the delays.</div>
+        <table>
+          <thead><tr><th>Driver</th><th>Open Tasks</th><th>Late</th></tr></thead>
+          <tbody id="accountabilityBody"></tbody>
+        </table>
+      </div>
+
+      <div class="report-view" id="reportOwnerRep">
+        <div class="report-note">The daily field report — most recently touched tasks first, with the Owner's Rep's own observations alongside.</div>
+        <table>
+          <thead><tr><th>Task</th><th>Last Updated</th><th>Owner Note</th></tr></thead>
+          <tbody id="ownerRepReportBody"></tbody>
+        </table>
+      </div>
+
+      <div class="report-view" id="reportVerify">
+        <div class="report-note">A GC marking a task "Pending Owner Verification" doesn't make it Approved. This shows every task in the approval workflow and its actual Approval Status.</div>
+        <table>
+          <thead><tr><th>Task</th><th>Execution Status</th><th>Approval</th></tr></thead>
+          <tbody id="verifyReportBody"></tbody>
+        </table>
+      </div>
+
+      <div class="report-view" id="reportLaborCost">
+        <div class="report-note">Budget vs. actual labor for every task with numbers on file — the variance column is the immediate cost signal for the owner.</div>
+        <div id="laborCostTotals" class="labor-cost-totals"></div>
+        <table>
+          <thead><tr><th>Task</th><th>Budget</th><th>Actual</th><th>Variance</th></tr></thead>
+          <tbody id="laborCostReportBody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  </div><!-- /gyView -->
+
+  <div id="phase1View" style="display:none;">
+
+    <div class="gov-banner">
+      <i class="fas fa-lock"></i>
+      The Governance Spine must be 100% complete before Kiri Slaughterhouse construction mobilization.
+    </div>
+
+    <div class="gov-header-card">
+      <div class="gov-header-top">
+        <div>
+          <h2><i class="fas fa-scale-balanced"></i> Kiri Slaughterhouse Governance Spine</h2>
+          <div class="sub">Owner's Representative &amp; Owner governance — GC has read-only access.</div>
+        </div>
+        <div class="gov-overall-pct" id="govOverallPct">0%</div>
+      </div>
+      <div class="gov-progress-track"><div class="gov-progress-fill" id="govOverallFill" style="width:0%;"></div></div>
+      <div class="gov-block-summary" id="govBlockSummary"></div>
+    </div>
+
+    <div class="gov-layout">
+      <div class="gov-blocks" id="govBlocks"></div>
+
+      <div class="gov-detail-panel" id="govDetailPanel">
+        <div class="help">Select a governance step to view or update its details.</div>
+      </div>
+    </div>
+
+  </div><!-- /phase1View -->
+
+</div>
+
+
+<div class="toast" id="toast"><span id="toastMessage"></span></div>
+
+<script>
+/* ================================================================
+   CONFIG — paste your published CSV links and Apps Script Web App
+   URL here once the two workbooks are hosted on Google Sheets.
+================================================================ */
+const CONFIG = {
+  // Kiri Slaughterhouse Task tab, from the Kiri Slaughterhouse workbook.
+  taskRegisterCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRBxAjTsQ2Q6OdNLThoOTx77rVg2EbsHPp_i9B7gLyv2mGjnkyA0Mo6rZsmUmmUnNWH_dW7hLd4vho6/pub?gid=8055518&single=true&output=csv',
+  // GC Requests CSV from the *Material* workbook — read-only, used only to
+  // look up each task's current material status for the gate below.
+  gcRequestsCsvUrl: 'PASTE_GC_REQUESTS_PUBLISHED_CSV_URL_HERE',
+  // Kiri Governance Spine tab, same Kiri Slaughterhouse workbook.
+  governanceCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRBxAjTsQ2Q6OdNLThoOTx77rVg2EbsHPp_i9B7gLyv2mGjnkyA0Mo6rZsmUmmUnNWH_dW7hLd4vho6/pub?gid=429867843&single=true&output=csv',
+  // /exec URL from deploying Kiri_Slaughterhouse_Backend.gs (bound to the
+  // Kiri Slaughterhouse spreadsheet) as a web app. See the DEPLOYMENT notes
+  // at the top of that script.
+  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbzI4kOVVlp1eb8mU2RrnP2apyKZeZs7dsKE_yrzOiGvhT-hAy2IUF5fJqZYgyHsSWlD/exec'
+};
+
+let allTasks = [];
+let gcRequests = [];
+let govSteps = [];
+let selectedGovStep = null;
+let collapsedGovBlocks = {}; // blockName -> true if user collapsed it
+let selectedTask = null;
+let matStatus = null;
+let originalStatusForSelected = null; // status the task had when it was picked, used to detect a real change
+let lastUpdatedBy = ''; // remembered locally between saves so the field doesn't have to be retyped every time
+// Real login replaces the old click-to-switch role toggle. `session` holds
+// the signed token returned by the Apps Script "login" action; `currentRole`
+// is kept as a variable (rather than reading session.role everywhere) so
+// the rest of the app's existing role-gated code doesn't need to change.
+const SESSION_KEY = 'kiriSlaughterhouse_session_v1';
+let session = null; // {token, role, label, exp} once logged in
+let currentRole = null; // 'GC' or 'OR', set by applyRolePermissions() after login
+let currentReportTab = 'field';
+
+// Centralized column-name aliases. The sheet's real header text wins — list
+// it FIRST — with older/alternate spellings as fallbacks. Fixing a mismatch
+// here (rather than at each call site) is the single place to correct it if
+// a column ever gets renamed again.
+const FIELD = {
+  approvalStatus: ['Approval Status'],
+  driver: ['Driver/Accountable Party', 'Driver / Accountable Party', 'Driver', 'Accountable Party'],
+  ownerNotes: ["Owner's Rep Notes", 'Owner Rep Notes'],
+  verifiedBy: ['Verified By (required before close/finish status)', 'Verified By', 'VerifiedBy'],
+  verifiedAt: ['Verified At', 'VerifiedAt'],
+  plannedLabor: ['Planned Labor'],
+  actualLabor: ['Actual Labor Used', 'Actual Labor'],
+  laborUnit: ['Labor Unit'],
+  lastUpdatedAt: ['Last Updated', 'Last Updated At', 'Updated At'],
+  photos: ['Photos'],
+  submittedBy: ['Submitted By (Closeout)', 'Submitted By', 'Closeout Submitted By'],
+  submittedAt: ['Submitted At (Closeout)', 'Submitted At', 'Closeout Submitted At']
+};
+
+let currentPhotoStage = 'Before';
+let pendingPhotos = []; // {stage, dataUrl, name} — queued client-side until submitTask() saves them
+
+// ---------------------------------------------------------------
+// Login / session
+//
+// There are exactly two accounts — one per contractual party (GC and
+// Owner's Representative) — issued by whoever set up the Apps Script
+// backend. Logging in proves *which party* is acting; the free-text
+// "Your Name" field elsewhere in the form records *which person on that
+// party's team* did it. The Apps Script endpoint independently verifies
+// the session token and rejects writes that don't match the required
+// role for that action (GC for updateTask, Owner's Rep for
+// setApprovalStatus) — the client-side locking below is for a clear UI,
+// not the actual security boundary.
+// ---------------------------------------------------------------
+
+function loadSession(){
+  try{
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || !s.token || !s.exp || Date.now() > s.exp) return null;
+    return s;
+  }catch(err){
+    return null;
+  }
+}
+function saveSession(s){
+  localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+}
+function clearSession(){
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function showLoginScreen(){
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+function showApp(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appRoot').style.display = 'block';
+}
+
+async function doLogin(){
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errBox = document.getElementById('loginError');
+  errBox.classList.remove('show');
+  if(!username || !password){
+    errBox.textContent = 'Enter both a username and password.';
+    errBox.classList.add('show');
+    return;
+  }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Logging in…';
+  try{
+    const data = await postToSheet({ action: 'login', username, password });
+    if(!data || !data.ok){
+      errBox.textContent = (data && data.error) ? data.error : 'Login failed — check the URL is configured and try again.';
+      errBox.classList.add('show');
+      return;
+    }
+    session = { token: data.token, role: data.role, label: data.label, exp: Date.now() + 12*60*60*1000 };
+    saveSession(session);
+    document.getElementById('loginPassword').value = '';
+    showApp();
+    applyRolePermissions();
+    loadAll();
+  }catch(err){
+    errBox.textContent = 'Could not reach the sheet: ' + err.message;
+    errBox.classList.add('show');
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Log In';
+  }
+}
+
+function logout(){
+  clearSession();
+  session = null;
+  location.reload();
+}
+
+// Disables/enables every input, select, textarea, and button inside the
+// GC-only sections of the form — this is the visual lock; the real
+// enforcement happens server-side in Apps Script.
+function lockGcFields(lock){
+  document.querySelectorAll('.gc-fields').forEach(wrap=>{
+    wrap.classList.toggle('locked', lock);
+    wrap.querySelectorAll('input, select, textarea, button').forEach(el=>{ el.disabled = lock; });
+  });
+}
+
+function applyRolePermissions(){
+  if(!session) return;
+  currentRole = session.role;
+
+  document.getElementById('sessionLabel').innerHTML = `<i class="fas fa-circle-user"></i> Logged in as ${escapeHtml(session.label)}`;
+  const note = document.getElementById('roleNote');
+  if(currentRole==='OR'){
+    note.textContent = "You're signed in as the Owner's Representative — you can write Owner's Rep Notes, set Approval Status, and update Kiri Slaughterhouse Governance Spine steps. Task execution fields are read-only; only the GC's login can update those.";
+  } else if(currentRole==='OWNER'){
+    note.textContent = "You're signed in as the Owner — you can view everything and update Kiri Slaughterhouse Governance Spine steps. Task execution fields and Approval Status are read-only; those belong to the GC and Owner's Representative logins.";
+  } else {
+    note.textContent = "You're signed in as the General Contractor — you can select tasks, log progress, record labor, and submit for approval. Only the Owner's Representative's login can set Approval Status, and the Kiri Slaughterhouse Governance Spine is view-only for you — the OR and Owner are fully responsible for it.";
+  }
+
+  lockGcFields(currentRole !== 'GC');
+
+  const ownerNotes = document.getElementById('fOwnerNotes');
+  const ownerHelp = document.getElementById('ownerNotesHelp');
+  if(ownerNotes){
+    ownerNotes.disabled = currentRole !== 'OR';
+    ownerHelp.textContent = currentRole==='OR' ? 'Recorded to the Owner\'s Rep Log below when you save.' : 'Only editable by the Owner\'s Representative.';
+  }
+  if(selectedTask) refreshVerifyBox();
+  renderReviewQueue();
+}
+
+function showToast(msg, type='success'){
+  const t = document.getElementById('toast');
+  document.getElementById('toastMessage').textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), type==='error'?8000:4000);
+}
+
+async function fetchCsv(url, label){
+  if(!url || url.startsWith('PASTE_')){
+    console.warn(`[${label}] CONFIG URL not set — skipping.`);
+    return { rows: [], headers: [], configured: false };
+  }
+  const res = await fetch(url, {cache:'no-store'});
+  if(!res.ok){
+    throw new Error(`${label} fetch failed (HTTP ${res.status}). Check the published-CSV URL is correct and set to "Anyone with the link".`);
+  }
+  const text = await res.text();
+  // Trim BOM/whitespace from headers so a stray space in the sheet doesn't
+  // silently break field lookups like row['Status'].
+  const parsed = Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: h => h.replace(/^\uFEFF/, '').trim()
+  });
+  console.log(`[${label}] loaded ${parsed.data.length} rows. Headers found:`, parsed.meta.fields);
+  return { rows: parsed.data, headers: parsed.meta.fields || [], configured: true };
+}
+
+// The sheet sometimes has legacy or shorthand text in the Status column
+// instead of one of the 8 official values below — e.g. "Pending
+// Verification" instead of "Pending Owner Verification", or "Started"
+// instead of "Working". Before this fix, normStatus() passed that raw text
+// straight through, so anything doing an exact match (the closeout gate,
+// the GC's status dropdown, the by-status report) silently missed those
+// rows and treated them as an unrelated status. This aliases known
+// variants to the canonical string so the whole app agrees.
+const STATUS_ALIASES = {
+  'pending verification': 'Pending Owner Verification',
+  'started': 'Working',
+  'in progress': 'Working'
+};
+
+function normStatus(s){
+  s = (s===undefined || s===null) ? '' : String(s).trim();
+  if(!s) return 'Not Started';
+  const lower = s.toLowerCase();
+  const canonMatch = EXEC_STATUS_ORDER.find(c => c.toLowerCase() === lower);
+  if(canonMatch) return canonMatch;
+  if(STATUS_ALIASES[lower]) return STATUS_ALIASES[lower];
+  return s; // genuinely unrecognized text — passed through as-is
+}
+function statusKey(s){
+  return normStatus(s).toLowerCase().replace(/\s+/g,'');
+}
+
+// Maps a raw Execution Status string to one of the 8 known buckets. Order
+// matters: more specific phrases are checked before shorter substrings they
+// contain (e.g. "waitinginspection" before a generic "waiting" check).
+function classifyStatus(rawStatus){
+  const k = statusKey(rawStatus);
+  if(k === '' || k === 'notstarted') return 'notstarted';
+  if(k.includes('waitingmaterial')) return 'waitingmaterial';
+  if(k.includes('readytostart')) return 'readytostart';
+  if(k.includes('waitinginspection')) return 'waitinginspection';
+  if(k.includes('punch')) return 'punchlist';
+  if(k.includes('pendingownerverification') || k.includes('pendingverif')) return 'pendingverify';
+  if(k.includes('verified') || k.includes('closed') || k.includes('approved')) return 'closed';
+  if(k.includes('working') || k.includes('progress') || k.includes('started')) return 'working';
+  return 'notstarted';
+}
+
+// Maps old Approval Status text (from before the Pending/Returned rename)
+// to the current values, so rows written before this update still display
+// and behave correctly instead of falling through to "Not Required".
+function normApproval(raw){
+  const v = (raw || '').trim();
+  if(v === 'Pending Approval') return 'Pending';
+  if(v === 'Rejected') return 'Returned';
+  return v || 'Not Required';
+}
+
+// Is this task actually approved, per the owner-controlled Approval Status
+// field? A GC setting Execution Status to Pending Owner Verification is NOT
+// enough on its own — this checks the separate, owner-controlled field.
+function isApproved(t){
+  return normApproval(getField(t, ...FIELD.approvalStatus)) === 'Approved';
+}
+function isOpenTask(t){
+  const k = classifyStatus(t['Status']);
+  return k !== 'closed';
+}
+function isLateTask(t){
+  const finish = getField(t, 'Planned Finish');
+  const k = classifyStatus(t['Status']);
+  if(!finish || k === 'closed') return false;
+  const d = new Date(finish);
+  if(isNaN(d)) return false;
+  return d < new Date() && k !== 'pendingverify';
+}
+// Parses the first "[timestamp] Name" line out of an append-only log, plus
+// any "Note:" line directly beneath it — used for "last touched" reporting.
+function parseLatestLogEntry(rawLog){
+  const text = (rawLog||'').trim();
+  if(!text) return null;
+  const firstBlock = text.split(/\n\s*\n/)[0];
+  const lines = firstBlock.split('\n');
+  const header = lines[0] || '';
+  const m = header.match(/^\[(.+?)\]\s*(.*)$/);
+  if(!m) return null;
+  const noteLine = lines.find(l => l.trim().startsWith('Note:'));
+  const reasonLine = lines.find(l => l.trim().startsWith('Reason:'));
+  return {
+    date: new Date(m[1]),
+    rawDate: m[1],
+    by: (m[2] || '').replace(/\s*\(Owner's Rep\)\s*$/,''),
+    note: noteLine ? noteLine.replace(/^\s*Note:\s*/, '') : '',
+    reason: reasonLine ? reasonLine.replace(/^\s*Reason:\s*/, '') : ''
+  };
+}
+// The Owner's Rep's top-priority worklist: every task waiting on their
+// decision, oldest submission first, plus a short history of recent
+// decisions for reference. Shown only when logged in as OR — the GC has
+// no approval actions to take, so this queue isn't relevant to them.
+function renderReviewQueue(){
+  const queuePanel = document.getElementById('reviewQueuePanel');
+  const recentPanel = document.getElementById('recentDecisionsPanel');
+  if(currentRole !== 'OR' || !allTasks.length){
+    queuePanel.style.display = 'none';
+    recentPanel.style.display = 'none';
+    return;
+  }
+
+  const pending = allTasks.filter(t => classifyStatus(t['Status']) === 'pendingverify' && !isApproved(t));
+  pending.sort((a,b)=>{
+    const da = new Date(getField(a,...FIELD.submittedAt) || 0).getTime();
+    const db = new Date(getField(b,...FIELD.submittedAt) || 0).getTime();
+    return (isNaN(da)?0:da) - (isNaN(db)?0:db); // oldest submission first
+  });
+
+  queuePanel.style.display = 'block';
+  document.getElementById('reviewQueueCount').textContent = pending.length;
+  const body = document.getElementById('reviewQueueBody');
+  body.innerHTML = !pending.length
+    ? '<div class="help">Nothing waiting on you right now.</div>'
+    : pending.map(t=>{
+        const submittedBy = getField(t,...FIELD.submittedBy) || '—';
+        const submittedAt = getField(t,...FIELD.submittedAt) || '—';
+        return `<div class="review-item">
+          <div class="review-item-main">
+            <b>${escapeHtml(t['Task ID'])}</b> — ${escapeHtml(t['Task Name'])}
+            <div class="review-item-meta">${escapeHtml(t['Division']||'')}${t['Division']?' · ':''}Submitted by <b>${escapeHtml(submittedBy)}</b> on ${escapeHtml(submittedAt)}</div>
+          </div>
+          <button type="button" class="btn btn-primary" style="padding:7px 14px; font-size:12px; white-space:nowrap;" onclick="reviewTask('${escapeHtml(t['Task ID'])}')"><i class="fas fa-magnifying-glass"></i> Review</button>
+        </div>`;
+      }).join('');
+
+  // Recently decided — last 8 Approved/Returned tasks, most recent first,
+  // with whatever note or return reason the OR left at the time.
+  const decided = allTasks
+    .map(t=>{
+      const a = normApproval(getField(t,...FIELD.approvalStatus));
+      if(a !== 'Approved' && a !== 'Returned') return null;
+      const entry = parseLatestLogEntry(getField(t,...FIELD.ownerNotes));
+      const by = (a==='Approved' ? getField(t,...FIELD.verifiedBy) : (entry && entry.by)) || '—';
+      const when = (a==='Approved' ? getField(t,...FIELD.verifiedAt) : (entry && entry.rawDate)) || '';
+      const note = entry ? (entry.reason || entry.note || '') : '';
+      return {t, decision:a, by, when, note};
+    })
+    .filter(Boolean);
+  decided.sort((p,q)=>{
+    const dp = new Date(p.when).getTime(), dq = new Date(q.when).getTime();
+    return (isNaN(dq)?0:dq) - (isNaN(dp)?0:dp);
+  });
+  const top = decided.slice(0,8);
+  recentPanel.style.display = top.length ? 'block' : 'none';
+  document.getElementById('recentDecisionsTableBody').innerHTML = top.map(x=>`<tr>
+    <td>${escapeHtml(x.t['Task ID'])} — ${escapeHtml(x.t['Task Name'])}</td>
+    <td>${x.decision==='Approved' ? '<span class="ps-chip appr-approved">Approved</span>' : '<span class="ps-chip appr-returned">Returned</span>'}</td>
+    <td>${escapeHtml(x.by)}</td>
+    <td>${escapeHtml(x.when || '—')}</td>
+    <td>${x.note ? escapeHtml(x.note) : '<span style="color:#8398a9;">—</span>'}</td>
+  </tr>`).join('');
+}
+
+// Jumps straight from a queue card into the full task detail/edit form —
+// the OR doesn't have to hunt for the task in the 240-row register below.
+function reviewTask(taskId){
+  pickTask(taskId);
+  const el = document.getElementById('editForm');
+  if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function daysSince(date){
+  if(!date || isNaN(date)) return null;
+  const ms = Date.now() - date.getTime();
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+function relativeDaysLabel(days){
+  if(days === null) return '—';
+  if(days === 0) return 'Today';
+  if(days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+
+async function loadAll(){
+  document.getElementById('syncPill').innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Loading…';
+  let taskResult = { rows: [], headers: [], configured: false };
+  let gcResult = { rows: [], headers: [], configured: false };
+  let govResult = { rows: [], headers: [], configured: false };
+
+  try{
+    [taskResult, gcResult, govResult] = await Promise.all([
+      fetchCsv(CONFIG.taskRegisterCsvUrl, 'Task Register'),
+      fetchCsv(CONFIG.gcRequestsCsvUrl, 'GC Requests'),
+      fetchCsv(CONFIG.governanceCsvUrl, 'Governance Spine')
+    ]);
+  }catch(err){
+    document.getElementById('syncPill').innerHTML = '<i class="fas fa-triangle-exclamation"></i> Sync error';
+    showToast('Could not reach the sheet: ' + err.message, 'error');
+    renderKpis(); renderTable(); renderPicker(); renderReviewQueue();
+    return;
+  }
+
+  gcRequests = gcResult.rows;
+  allTasks = taskResult.rows.filter(t => t['Task ID'] && t['Task Name']);
+  // Governance steps only (GOV 01, GOV GY 01, etc.) — the PH1-PH5 rows are
+  // phase headers/placeholders in the sheet, not steps to display as
+  // cards. Matches any Task ID starting with "GOV" (optionally followed
+  // by a short project code like "GY") and ending in digits, so it works
+  // across differently-prefixed workbooks without hardcoding one format.
+  govSteps = govResult.rows.filter(t => /^GOV\s*([A-Z]+\s*)?\d+/i.test(t['Task ID']||''));
+
+  if(!taskResult.configured){
+    document.getElementById('syncPill').innerHTML = '<i class="fas fa-plug-circle-xmark"></i> Not configured yet';
+    showToast('CONFIG.taskRegisterCsvUrl is still a placeholder. Paste the published Task Register CSV link at the top of the script.', 'warn');
+  } else if(!allTasks.length){
+    document.getElementById('syncPill').innerHTML = '<i class="fas fa-triangle-exclamation"></i> Connected, but 0 tasks found';
+    showToast(`The sheet responded but no rows matched "Task ID" + "Task Name" columns. Check the console for the exact headers found — they must match exactly (case + spelling): ${taskResult.headers.join(', ') || '(no headers found)'}`, 'warn');
+  } else {
+    document.getElementById('syncPill').innerHTML = `<i class="fas fa-check-circle"></i> Synced — ${allTasks.length} tasks`;
+  }
+  document.getElementById('lastSyncedNote').textContent = `Last synced ${new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'})}`;
+
+  renderKpis();
+  renderTable();
+  renderPicker();
+  renderReviewQueue();
+  renderReports();
+  renderGovernance();
+}
+
+// Google's published-CSV endpoint is served from a cache that can lag a
+// few minutes behind the actual sheet, so a page left open can silently
+// go stale. Poll in the background and refresh the sync pill/timestamp —
+// this does NOT touch the currently-open edit form, so it won't yank
+// focus or clobber anything someone's mid-typing.
+setInterval(loadAll, 60000);
+
+/* ============================================================
+   PHASE 1 GOVERNANCE MODULE — GOVERNANCE SPINE
+   Deliberately kept separate from all the Kiri Slaughterhouse construction
+   logic above: different data source (CONFIG.governanceCsvUrl),
+   different vocabulary (3-state Status, no material/labor/photo
+   fields), different write action (updateGovernanceStep).
+============================================================ */
+
+function switchModule(view){
+  document.getElementById('gyView').style.display = view === 'gy' ? '' : 'none';
+  document.getElementById('phase1View').style.display = view === 'phase1' ? '' : 'none';
+  document.querySelectorAll('.module-tab').forEach(btn=>{
+    btn.classList.toggle('active', btn.dataset.view === view);
+  });
+  if(view === 'phase1') renderGovernance();
+}
+
+const GOV_BLOCK_ORDER = [
+  'Baseline & Hazard Discovery',
+  'Utility & SDC Validation',
+  'Seismic, Stormwater & Governance Lock'
+];
+
+function govStatusKey(raw){
+  const k = (raw||'').toLowerCase().trim();
+  if(k === 'complete' || k === 'closed' || k === 'verified') return 'complete';
+  if(k === 'in progress' || k === 'working') return 'inprogress';
+  return 'notstarted';
+}
+function isGovComplete(step){
+  return govStatusKey(step['Status']) === 'complete' || Number(step['% Complete']||0) >= 100;
+}
+
+function renderGovernance(){
+  const blocksEl = document.getElementById('govBlocks');
+  if(!blocksEl) return;
+
+  if(!govSteps.length){
+    blocksEl.innerHTML = '<div class="help">CONFIG.governanceCsvUrl is not configured yet, or the sheet returned no GOV rows.</div>';
+    document.getElementById('govOverallPct').textContent = '—';
+    document.getElementById('govOverallFill').style.width = '0%';
+    document.getElementById('govBlockSummary').innerHTML = '';
+    return;
+  }
+
+  const totalComplete = govSteps.filter(isGovComplete).length;
+  const overallPct = Math.round((totalComplete / govSteps.length) * 100);
+  document.getElementById('govOverallPct').textContent = overallPct + '%';
+  document.getElementById('govOverallFill').style.width = overallPct + '%';
+
+  // Group by Block, in the canonical 3-block order; anything with an
+  // unrecognized Block value still shows, in a trailing group, rather
+  // than being silently dropped.
+  const byBlock = {};
+  govSteps.forEach(s=>{
+    const b = s['Block'] || 'Ungrouped';
+    (byBlock[b] = byBlock[b] || []).push(s);
+  });
+  const blockNames = [
+    ...GOV_BLOCK_ORDER.filter(b=>byBlock[b]),
+    ...Object.keys(byBlock).filter(b=>!GOV_BLOCK_ORDER.includes(b))
+  ];
+
+  document.getElementById('govBlockSummary').innerHTML = blockNames.map(b=>{
+    const steps = byBlock[b];
+    const done = steps.filter(isGovComplete).length;
+    return `<span><b>${done}/${steps.length}</b> ${escapeHtml(b)}</span>`;
+  }).join('');
+
+  blocksEl.innerHTML = blockNames.map((b, bi)=>{
+    const steps = byBlock[b];
+    const done = steps.filter(isGovComplete).length;
+    const pct = Math.round((done/steps.length)*100);
+    const collapsed = !!collapsedGovBlocks[b];
+    return `<div class="gov-block ${collapsed?'collapsed':''}" id="govBlock${bi}">
+      <div class="gov-block-head" onclick="toggleGovBlock('${escapeHtml(b)}', ${bi})">
+        <div class="gov-block-head-left">
+          <i class="fas fa-chevron-down chev"></i>
+          <div>
+            <div class="gov-block-title">BLOCK ${bi+1} — ${escapeHtml(b).toUpperCase()}</div>
+            <div class="gov-block-sub">${steps.length} steps · ${done} complete</div>
+          </div>
+        </div>
+        <div class="gov-block-pct">${pct}%</div>
+      </div>
+      <div class="gov-block-body">
+        <div class="gov-timeline">
+          ${steps.map(s=>{
+            const sKey = govStatusKey(s['Status']);
+            const selected = selectedGovStep && selectedGovStep['Task ID']===s['Task ID'];
+            return `<div class="gov-step status-${sKey}" onclick="selectGovStep('${escapeHtml(s['Task ID'])}')">
+              <div class="gov-step-card ${selected?'selected':''}">
+                <div class="gov-step-top">
+                  <div>
+                    <div class="gov-step-id">${escapeHtml(s['Task ID'])} · WBS ${escapeHtml(s['WBS']||'')}</div>
+                    <div class="gov-step-name">${escapeHtml(s['Task Name'])}</div>
+                  </div>
+                  <span class="gov-step-status">${escapeHtml(s['Status']||'Not Started')}</span>
+                </div>
+                <div class="gov-step-meta">
+                  <span><i class="fas fa-percent"></i> ${escapeHtml(String(s['% Complete']||0))}%</span>
+                  <span><i class="fas fa-diagram-predecessor"></i> ${escapeHtml(s['Predecessor']||'—')}</span>
+                  <span><i class="fas fa-user"></i> ${escapeHtml(s['Assigned To']||"Owner's Rep")}</span>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  renderGovDetailPanel();
+}
+
+function toggleGovBlock(blockName, idx){
+  collapsedGovBlocks[blockName] = !collapsedGovBlocks[blockName];
+  const el = document.getElementById('govBlock'+idx);
+  if(el) el.classList.toggle('collapsed');
+}
+
+function selectGovStep(taskId){
+  selectedGovStep = govSteps.find(s=>s['Task ID']===taskId) || null;
+  renderGovernance();
+}
+
+function renderGovDetailPanel(){
+  const panel = document.getElementById('govDetailPanel');
+  const s = selectedGovStep;
+  if(!s){
+    panel.innerHTML = '<div class="help">Select a governance step to view or update its details.</div>';
+    return;
+  }
+  const canEdit = currentRole === 'OR' || currentRole === 'OWNER';
+  panel.innerHTML = `
+    <h3>${escapeHtml(s['Task ID'])}</h3>
+    <div class="gov-detail-sub">${escapeHtml(s['Task Name'])}</div>
+
+    <div class="gov-detail-row"><span>Block</span><span>${escapeHtml(s['Block']||'—')}</span></div>
+    <div class="gov-detail-row"><span>WBS</span><span>${escapeHtml(s['WBS']||'—')}</span></div>
+    <div class="gov-detail-row muted"><span>Predecessor</span><span>${escapeHtml(s['Predecessor']||'—')}</span></div>
+
+    <div class="field">
+      <label>Status</label>
+      <select id="govStatus" ${canEdit?'':'disabled'}>
+        ${['Not Started','In Progress','Complete'].map(v=>`<option ${v===(s['Status']||'Not Started')?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>% Complete</label>
+      <input id="govPct" type="number" min="0" max="100" value="${escapeHtml(String(s['% Complete']||0))}" ${canEdit?'':'disabled'}>
+    </div>
+    <div class="field">
+      <label>Assigned To</label>
+      <input id="govAssigned" value="${escapeHtml(s['Assigned To']||"Owner's Rep")}" ${canEdit?'':'disabled'}>
+    </div>
+    <div class="field">
+      <label>Approval Status</label>
+      <select id="govApproval" ${canEdit?'':'disabled'}>
+        ${['Not Required','Pending','Approved','Returned'].map(v=>`<option ${v===(s['Approval Status']||'Not Required')?'selected':''}>${v}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label>Planned Start</label>
+      <input id="govPlanStart" type="date" value="${escapeHtml(s['Planned Start']||'')}" ${canEdit?'':'disabled'}>
+    </div>
+    <div class="field">
+      <label>Planned Finish</label>
+      <input id="govPlanFinish" type="date" value="${escapeHtml(s['Planned Finish']||'')}" ${canEdit?'':'disabled'}>
+    </div>
+    <div class="field">
+      <label>Actual Start</label>
+      <input id="govActualStart" type="date" value="${escapeHtml(s['Actual Start']||'')}" ${canEdit?'':'disabled'}>
+    </div>
+    <div class="field">
+      <label>Actual Finish</label>
+      <input id="govActualFinish" type="date" value="${escapeHtml(s['Actual Finish']||'')}" ${canEdit?'':'disabled'}>
+    </div>
+    <div class="field">
+      <label>Owner Notes</label>
+      <textarea id="govNotes" rows="3" ${canEdit?'':'disabled'}>${escapeHtml(s['Owner Notes']||'')}</textarea>
+    </div>
+
+    ${canEdit ? `<button type="button" class="btn btn-primary" style="margin-top:12px; width:100%;" onclick="saveGovStep()"><i class="fas fa-floppy-disk"></i> Save Governance Step</button>`
+      : `<div class="help" style="margin-top:12px;">Log in as the Owner's Representative or Owner to update governance steps.</div>`}
+
+    <div class="gov-na-note"><i class="fas fa-ban"></i> Material Status: N/A — this is a governance deliverable, not a construction task. Labor, photos, and inspection fields don't apply here.</div>
+  `;
+}
+
+async function saveGovStep(){
+  if(currentRole !== 'OR' && currentRole !== 'OWNER'){ showToast("Only the Owner's Representative or Owner can update governance steps", 'error'); return; }
+  if(!selectedGovStep){ return; }
+
+  const payload = {
+    action: 'updateGovernanceStep',
+    taskId: selectedGovStep['Task ID'],
+    status: document.getElementById('govStatus').value,
+    percentComplete: document.getElementById('govPct').value,
+    assignedTo: document.getElementById('govAssigned').value.trim(),
+    approvalStatus: document.getElementById('govApproval').value,
+    plannedStart: document.getElementById('govPlanStart').value,
+    plannedFinish: document.getElementById('govPlanFinish').value,
+    actualStart: document.getElementById('govActualStart').value,
+    actualFinish: document.getElementById('govActualFinish').value,
+    ownerNotes: document.getElementById('govNotes').value,
+    updatedBy: session ? session.label : ''
+  };
+
+  try{
+    showToast('Saving governance step…');
+    const data = await postToSheet(payload);
+    if(data && data.ok === false){ throw new Error(data.error || 'Save failed.'); }
+    showToast(`✅ ${selectedGovStep['Task ID']} updated`);
+    loadAll();
+  }catch(err){
+    showToast('Save failed: ' + err.message, 'error');
+  }
+}
+
+function renderKpis(){
+  const counts = {notstarted:0, waitingmaterial:0, readytostart:0, working:0, waitinginspection:0, punchlist:0, pendingverify:0, closed:0};
+  allTasks.forEach(t=>{
+    counts[classifyStatus(t['Status'])]++;
+  });
+  document.getElementById('kpiNotStarted').textContent = counts.notstarted;
+  document.getElementById('kpiWaitingMaterial').textContent = counts.waitingmaterial;
+  document.getElementById('kpiReadyToStart').textContent = counts.readytostart;
+  document.getElementById('kpiWorking').textContent = counts.working;
+  document.getElementById('kpiWaitingInspection').textContent = counts.waitinginspection;
+  document.getElementById('kpiPunchList').textContent = counts.punchlist;
+  document.getElementById('kpiPendingVerify').textContent = counts.pendingverify;
+  document.getElementById('kpiClosed').textContent = counts.closed;
+}
+
+function latestMaterialStatusForTask(taskId){
+  const rows = gcRequests.filter(r => (r['Task Code']||'').trim() === taskId);
+  if(!rows.length) return null;
+  // last row wins (assume sheet appends chronologically)
+  const last = rows[rows.length-1];
+  return last['Warehouse Status'] || null;
+}
+
+function renderTable(){
+  const q = (document.getElementById('taskSearch').value||'').toLowerCase();
+  const statusF = document.getElementById('statusFilter').value;
+  const tbody = document.getElementById('taskTableBody');
+  const rows = allTasks.filter(t=>{
+    const matchesQ = !q || (t['Task Name']||'').toLowerCase().includes(q) || (t['Task ID']||'').toLowerCase().includes(q);
+    const matchesS = statusF==='all' || normStatus(t['Status'])===statusF;
+    return matchesQ && matchesS;
+  });
+  if(!rows.length){ tbody.innerHTML = '<tr><td colspan="11" class="empty">No tasks match.</td></tr>'; return; }
+  tbody.innerHTML = rows.map((t,i)=>{
+    const sKey = classifyStatus(t['Status']);
+    const chipLabel = normStatus(t['Status']);
+    const matStat = t['Material Status'] || latestMaterialStatusForTask(t['Task ID']) || '—';
+    const matClass = (matStat === 'Ready' || matStat === 'Not Required') ? 'mat-ready' : (matStat==='—' ? '' : 'mat-notready');
+    const approvalRaw = normApproval(getField(t,...FIELD.approvalStatus));
+    const apprKey = 'appr-' + approvalRaw.toLowerCase().replace(/\s+/g,'');
+    const driver = getField(t,...FIELD.driver) || '—';
+    const laborCell = renderLaborCell(t);
+    // Use a data-attribute (looked up by row index) instead of inlining the
+    // Task ID into an onclick="..." string — a quote/apostrophe in the Task
+    // ID or Task Name would otherwise break the generated HTML and silently
+    // kill the click handler for that row (and everything after it).
+    return `<tr class="row-pick" data-row-idx="${i}">
+      <td>${escapeHtml(t['Task ID'])}</td>
+      <td>${escapeHtml(t['Task Name'])}</td>
+      <td>${escapeHtml(t['WBS']||t['CSI Division']||'')}</td>
+      <td><span class="status-chip dot st-${sKey}">${escapeHtml(chipLabel)}</span></td>
+      <td>${approvalRaw!=='Not Required' ? `<span class="ps-chip ${apprKey}">${escapeHtml(approvalRaw)}</span>` : '—'}</td>
+      <td>${driver!=='—' ? `<span class="driver-chip">${escapeHtml(driver)}</span>` : '—'}</td>
+      <td>${matStat!=='—' ? `<span class="mat-chip ${matClass}">${escapeHtml(matStat)}</span>` : '—'}</td>
+      <td>${escapeHtml(t['Percent Complete']||'0')}%</td>
+      <td>${escapeHtml(t['Planned Start']||'—')}</td>
+      <td>${escapeHtml(t['Planned Finish']||'—')}</td>
+      <td>${laborCell}</td>
+    </tr>`;
+  }).join('');
+  // Store the exact rows currently rendered so the click handler below can
+  // map a row index back to the right task object.
+  tbody._rowData = rows;
+}
+
+// Parses a labor amount out of a free-text field like "12 crew-days" or "$8,000".
+function parseLaborNumber(v){
+  if(v===undefined || v===null) return null;
+  const s = String(v).replace(/[,$]/g,'').match(/-?\d+(\.\d+)?/);
+  return s ? parseFloat(s[0]) : null;
+}
+function laborUnitOf(t){
+  return getField(t,...FIELD.laborUnit) || (String(getField(t,'Labor Budget (Crew-Days or $)')||'').includes('$') ? '$' : 'Crew-Days');
+}
+// Formats a parsed labor number for display: "$8,000" for cost, "5 Crew-Days" etc.
+function formatLaborAmount(num, unit){
+  if(num===null || num===undefined || isNaN(num)) return '—';
+  if(unit==='$') return '$' + Math.round(num).toLocaleString();
+  return `${num} ${unit}`;
+}
+
+function renderLaborCell(t){
+  const planned = getField(t,...FIELD.plannedLabor) || t['Labor Budget (Crew-Days or $)'] || '';
+  const actual = getField(t,...FIELD.actualLabor);
+  const unit = laborUnitOf(t);
+  const pNum = parseLaborNumber(planned);
+  const aNum = parseLaborNumber(actual);
+  let varianceHtml = '';
+  if(pNum!==null && aNum!==null){
+    const diff = aNum - pNum;
+    const cls = diff>0 ? 'v-over' : (diff<0 ? 'v-under' : 'v-even');
+    const label = diff>0 ? `+${formatLaborAmount(diff, unit)} over` : (diff<0 ? `${formatLaborAmount(diff, unit)} under` : 'On budget');
+    varianceHtml = `<div class="v ${cls}">${label}</div>`;
+  }
+  return `<div class="labor-cell">
+    <div class="b">Budget: ${pNum!==null ? formatLaborAmount(pNum, unit) : escapeHtml(planned || '—')}</div>
+    <div class="a">Actual: ${aNum!==null ? formatLaborAmount(aNum, unit) : '—'}</div>
+    ${varianceHtml}
+  </div>`;
+}
+
+function escapeHtml(v){
+  return String(v==null? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Delegated click handler — survives re-renders and doesn't break on
+// special characters in the underlying data.
+document.addEventListener('click', function(e){
+  const tr = e.target.closest('#taskTableBody tr[data-row-idx]');
+  if(!tr) return;
+  const tbody = document.getElementById('taskTableBody');
+  const row = tbody._rowData && tbody._rowData[Number(tr.dataset.rowIdx)];
+  if(row) pickTask(row['Task ID']);
+});
+
+function renderPicker(){
+  const sel = document.getElementById('taskPicker');
+  sel.innerHTML = '<option value="">— choose a task —</option>' +
+    allTasks.map(t=>`<option value="${escapeHtml(t['Task ID'])}">${escapeHtml(t['Task ID'])} — ${escapeHtml(t['Task Name'])}</option>`).join('');
+}
+
+function pickTask(taskId){
+  if(!taskId){ clearForm(); return; }
+  const t = allTasks.find(x=>x['Task ID']===taskId);
+  if(!t) return;
+  selectedTask = t;
+  document.getElementById('taskPicker').value = taskId;
+  document.getElementById('editForm').style.display = 'block';
+  document.getElementById('fAssigned').value = t['Assigned To']||'';
+  document.getElementById('fDriver').value = getField(t,...FIELD.driver)||'';
+  document.getElementById('fLaborPlanned').value = parseLaborNumber(getField(t,...FIELD.plannedLabor) || t['Labor Budget (Crew-Days or $)']) ?? '';
+  document.getElementById('fLaborActual').value = parseLaborNumber(getField(t,...FIELD.actualLabor)) ?? '';
+  document.getElementById('fLaborUnit').value = laborUnitOf(t);
+  document.getElementById('fStart').value = t['Planned Start']||'';
+  document.getElementById('fFinish').value = t['Planned Finish']||'';
+  document.getElementById('fActualStart').value = t['Actual Start']||'';
+  document.getElementById('fActualFinish').value = t['Actual Finish']||'';
+  document.getElementById('fStatus').value = normStatus(t['Status']);
+  document.getElementById('fPercent').value = t['Percent Complete']||0;
+  document.getElementById('fNotes').value = '';
+  document.getElementById('fUpdatedBy').value = lastUpdatedBy;
+  const existingMat = t['Material Status'] || latestMaterialStatusForTask(taskId);
+  setMatStatus(existingMat && ['Not Required','Not available','In warehouse','In transit','Ready'].includes(existingMat) ? existingMat : null);
+  document.getElementById('fExplain').value = t['Material Status Explanation (required if not Ready)']||'';
+
+  currentPhotoStage = 'Before';
+  document.querySelectorAll('#photoStageTabs button').forEach(b=>b.classList.toggle('sel', b.dataset.stage==='Before'));
+  document.getElementById('photoStageNote').textContent = 'Before';
+  pendingPhotos = [];
+  renderPhotoGrid();
+  renderPhotoHistory(t);
+
+  // Remember the status as it stood when the task was opened, so we can
+  // tell a real change from "reopened the form, status untouched."
+  originalStatusForSelected = normStatus(t['Status']);
+  document.getElementById('statusChangeFlag').classList.remove('show');
+  document.getElementById('fNotesLabel').textContent = 'Add a note (optional)';
+
+  // Accountability meta — populated only if the sheet actually has these
+  // columns. If it doesn't yet, this shows "—" and the task/help text below
+  // explains what to add so creation-accountability can be tracked too.
+  document.getElementById('metaCreatedBy').textContent = getField(t,'Created By','Creator') || '—';
+  document.getElementById('metaCreatedAt').textContent = getField(t,'Created At','Created On','Date Created') || '—';
+  document.getElementById('metaUpdatedBy').textContent = getField(t,'Last Updated By','Updated By') || '—';
+  document.getElementById('metaUpdatedAt').textContent = getField(t,...FIELD.lastUpdatedAt) || '—';
+  const submittedBy = getField(t,...FIELD.submittedBy);
+  const submittedAt = getField(t,...FIELD.submittedAt);
+  document.getElementById('metaSubmittedWrap').style.display = submittedBy ? 'inline' : 'none';
+  document.getElementById('metaSubmittedBy').textContent = submittedBy || '—';
+  document.getElementById('metaSubmittedAt').textContent = submittedAt || '—';
+
+  renderActivityLog(t['Notes']||'');
+
+  document.getElementById('fOwnerNotes').value = '';
+  document.getElementById('fOwnerNotes').disabled = currentRole !== 'OR';
+  renderOwnerNotesLog(getField(t,...FIELD.ownerNotes)||'');
+
+  document.getElementById('fApprovalStatus').value = normApproval(getField(t,...FIELD.approvalStatus));
+  document.getElementById('fVerifiedBy').value = getField(t,...FIELD.verifiedBy)||'';
+  document.getElementById('fVerifiedAt').value = getField(t,...FIELD.verifiedAt)||'';
+  document.getElementById('fRejectReason').value = '';
+  refreshVerifyBox();
+
+  // Make sure the person actually sees the form open — it lives lower on
+  // the page, so without this a click can look like it did nothing.
+  const formEl = document.getElementById('editForm');
+  formEl.scrollIntoView({behavior:'smooth', block:'start'});
+  formEl.style.outline = '2px solid var(--warn)';
+  setTimeout(()=>{ formEl.style.outline = 'none'; }, 900);
+}
+
+function renderActivityLog(rawNotes){
+  const box = document.getElementById('activityLog');
+  const text = (rawNotes||'').trim();
+  box.innerHTML = text ? escapeHtml(text) : '<span class="empty-log">No activity logged yet.</span>';
+  box.scrollTop = 0;
+}
+
+function renderOwnerNotesLog(rawNotes){
+  const box = document.getElementById('ownerNotesLog');
+  const text = (rawNotes||'').trim();
+  box.innerHTML = text ? escapeHtml(text) : '<span class="empty-log">No owner notes logged yet.</span>';
+  box.scrollTop = 0;
+}
+
+function renderLaborVariancePreview(){
+  const planned = parseFloat(document.getElementById('fLaborPlanned').value);
+  const actual = parseFloat(document.getElementById('fLaborActual').value);
+  const unit = document.getElementById('fLaborUnit').value;
+  const help = document.getElementById('laborVariancePreview');
+  if(isNaN(planned) || isNaN(actual)){
+    help.textContent = 'Enter actual crew-days/hours/$ consumed so far.';
+    help.style.color = '';
+    return;
+  }
+  const diff = actual - planned;
+  if(diff === 0){ help.textContent = `On budget — ${actual} ${unit} used against a ${planned} ${unit} plan.`; help.style.color = '#5c7893'; }
+  else if(diff > 0){ help.textContent = `⚠ Over budget by ${diff} ${unit} (planned ${planned}, actual ${actual}).`; help.style.color = 'var(--danger)'; }
+  else { help.textContent = `Under budget by ${Math.abs(diff)} ${unit} (planned ${planned}, actual ${actual}).`; help.style.color = 'var(--ok)'; }
+}
+
+// Shows/hides and enables/disables the Owner/OR approval box based on
+// whether the person is currently viewing as the Owner's Representative,
+// and toggles the Verified-By / Rejection-Reason sub-fields based on the
+// currently selected Approval Status value.
+function refreshVerifyBox(){
+  if(!selectedTask) return;
+  const box = document.getElementById('verifyBox');
+  const lockedNote = document.getElementById('verifyLockedNote');
+  const pill = document.getElementById('verifyStatusPill');
+  const approval = normApproval(getField(selectedTask,...FIELD.approvalStatus));
+  const execStatus = normStatus(selectedTask['Status']);
+
+  if(approval === 'Approved'){
+    pill.innerHTML = `<span class="verified-pill"><i class="fas fa-circle-check"></i> Approved by ${escapeHtml(getField(selectedTask,...FIELD.verifiedBy))}${getField(selectedTask,...FIELD.verifiedAt) ? ' on '+escapeHtml(getField(selectedTask,...FIELD.verifiedAt)) : ''}</span>`;
+  } else if(approval === 'Returned'){
+    pill.innerHTML = `<span class="missing-pill"><i class="fas fa-triangle-exclamation"></i> Returned to the GC by the Owner's Representative</span>`;
+  } else if(approval === 'Pending'){
+    pill.innerHTML = `<span class="missing-pill"><i class="fas fa-hourglass-half"></i> Waiting on Owner's Representative review</span>`;
+  } else {
+    pill.innerHTML = `<span class="help">Approval isn't required for this task unless the Owner's Representative sets it.</span>`;
+  }
+
+  const canAct = currentRole === 'OR';
+  document.getElementById('fApprovalStatus').disabled = !canAct;
+  document.getElementById('fVerifiedBy').disabled = !canAct;
+  document.getElementById('fRejectReason').disabled = !canAct;
+  box.classList.toggle('locked', !canAct);
+  lockedNote.textContent = canAct ? '' : 'Log in as the Owner\'s Representative to change Approval Status.';
+
+  // The closeout gate — the two big Approve/Return buttons — only shows
+  // once the GC has actually put the task in front of the OR (Execution
+  // Status = Pending Owner Verification) and it hasn't already been
+  // decided. Outside that, the plain dropdown below still works for edge
+  // cases (e.g. manually marking a task "Not Required").
+  const gate = document.getElementById('closeoutGate');
+  const atGate = canAct && execStatus === 'Pending Owner Verification' && approval !== 'Approved';
+  gate.style.display = atGate ? 'block' : 'none';
+
+  handleApprovalStatusChange();
+}
+
+// Toggles which sub-fields show based on the selected Approval Status —
+// Verified By/At only matter for Approved, Rejection Reason only for Rejected.
+function handleApprovalStatusChange(){
+  const v = document.getElementById('fApprovalStatus').value;
+  document.getElementById('verifyFields').style.display = v==='Approved' ? 'grid' : 'none';
+  document.getElementById('rejectReasonWrap').style.display = v==='Returned' ? 'block' : 'none';
+}
+
+// Wired to the two big Approve Close / Return to GC buttons in the
+// closeout gate. Sets the underlying Approval Status control and either
+// saves immediately (Approve — verifier is whoever is logged in and named
+// in the accountability field) or focuses the required comment box
+// (Return — can't submit without an explanation).
+function decideCloseout(decision){
+  const select = document.getElementById('fApprovalStatus');
+  select.value = decision;
+  handleApprovalStatusChange();
+  if(decision === 'Approved'){
+    const nameField = document.getElementById('fUpdatedBy');
+    const verifiedByField = document.getElementById('fVerifiedBy');
+    if(!verifiedByField.value.trim()) verifiedByField.value = nameField.value.trim() || lastUpdatedBy;
+    saveApprovalStatus();
+  } else {
+    document.getElementById('fRejectReason').focus();
+    showToast('Add a comment explaining what needs correction, then click "Save Approval Status" to return it to the GC.');
+  }
+}
+
+async function saveApprovalStatus(){
+  if(!selectedTask){ showToast('Select a task first', 'error'); return; }
+  if(currentRole !== 'OR'){ showToast('Only the Owner\'s Representative can change Approval Status', 'error'); return; }
+
+  const approvalStatus = document.getElementById('fApprovalStatus').value;
+  const updatedBy = document.getElementById('fUpdatedBy').value.trim() || lastUpdatedBy;
+  if(!updatedBy){
+    showToast('Enter your name (accountability field above) before saving', 'error');
+    document.getElementById('fUpdatedBy').focus();
+    return;
+  }
+
+  let verifiedBy = getField(selectedTask,...FIELD.verifiedBy) || '';
+  let verifiedAt = getField(selectedTask,...FIELD.verifiedAt) || '';
+  let rejectReason = '';
+
+  if(approvalStatus === 'Approved'){
+    verifiedBy = document.getElementById('fVerifiedBy').value.trim();
+    if(!verifiedBy){ showToast('Enter the verifier\'s name before approving', 'error'); document.getElementById('fVerifiedBy').focus(); return; }
+    verifiedAt = nowStamp();
+  } else if(approvalStatus === 'Returned'){
+    rejectReason = document.getElementById('fRejectReason').value.trim();
+    if(!rejectReason){ showToast('Explain why this task is being returned to the GC', 'error'); document.getElementById('fRejectReason').focus(); return; }
+  }
+
+  const timestamp = nowStamp();
+  const ownerNoteText = document.getElementById('fOwnerNotes').value.trim();
+  let fullOwnerLog = getField(selectedTask,...FIELD.ownerNotes) || '';
+  const entryLines = [`[${timestamp}] ${updatedBy} (Owner's Rep)`, `  Approval Status → ${approvalStatus}`];
+  if(rejectReason) entryLines.push(`  Reason: ${rejectReason}`);
+  if(ownerNoteText) entryLines.push(`  Note: ${ownerNoteText}`);
+  const entry = entryLines.join('\n');
+  fullOwnerLog = fullOwnerLog.trim() ? `${entry}\n\n${fullOwnerLog.trim()}` : entry;
+
+  const payload = {
+    action: 'setApprovalStatus',
+    taskId: selectedTask['Task ID'],
+    taskName: selectedTask['Task Name'],
+    approvalStatus: approvalStatus,
+    verifiedBy: verifiedBy,
+    verifiedAt: verifiedAt,
+    ownerRepNotes: fullOwnerLog,
+    updatedBy: updatedBy,
+    updatedAt: timestamp
+  };
+  try{
+    showToast('Saving approval status…');
+    await postToSheet(payload);
+    const followUp = approvalStatus === 'Approved' ? ' — task closed (Verified / Closed)'
+      : approvalStatus === 'Returned' ? ' — sent back to the GC (Punch List)' : '';
+    showToast(`✅ ${selectedTask['Task ID']} — Approval Status set to ${approvalStatus}${followUp}`);
+    clearForm();
+    loadAll();
+  }catch(err){
+    showToast('Approval status failed to save: ' + err.message, 'warn');
+  }
+}
+
+// Fires when the Execution Status dropdown changes — flags a real change
+// (vs. just reopening the form on an unchanged value) and makes the note
+// field required so every transition carries an explanation.
+function handleStatusChange(){ refreshChangeFlag(); }
+
+function refreshChangeFlag(){
+  const newStatus = document.getElementById('fStatus').value;
+  const flag = document.getElementById('statusChangeFlag');
+  const label = document.getElementById('fNotesLabel');
+  const statusChanged = originalStatusForSelected && newStatus !== originalStatusForSelected;
+
+  if(statusChanged){
+    flag.classList.add('show');
+    document.getElementById('scfFrom').textContent = `Status: ${originalStatusForSelected}`;
+    document.getElementById('scfTo').textContent = `Status: ${newStatus}`;
+    label.innerHTML = 'Explain the change <span style="color:var(--danger)">*</span>';
+  } else {
+    flag.classList.remove('show');
+    label.textContent = 'Add a note (optional)';
+  }
+}
+
+function nowStamp(){
+  // Local time, human-readable, with timezone abbreviation so a log entry
+  // is unambiguous to whoever reads it later.
+  return new Date().toLocaleString('en-US', {
+    year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', timeZoneName:'short'
+  });
+}
+
+function setMatStatus(v){
+  matStatus = v;
+  document.querySelectorAll('#statusOptions button').forEach(b=>{
+    b.classList.toggle('sel', b.dataset.v===v);
+  });
+  const gate = document.getElementById('gateBox');
+  const title = document.getElementById('gateTitle');
+  const explainWrap = document.getElementById('explainWrap');
+  if(!v){
+    gate.className='gate';
+    title.innerHTML = '<i class="fas fa-circle-info"></i> Select a material status above';
+    explainWrap.style.display='none';
+  } else if(v==='Ready'){
+    gate.className='gate ready';
+    title.innerHTML = '<i class="fas fa-circle-check"></i> Material is Ready — normal submit allowed';
+    explainWrap.style.display='none';
+  } else if(v==='Not Required'){
+    gate.className='gate ready';
+    title.innerHTML = '<i class="fas fa-circle-check"></i> Material not required for this task — normal submit allowed';
+    explainWrap.style.display='none';
+  } else {
+    gate.className='gate blocked';
+    title.innerHTML = `<i class="fas fa-triangle-exclamation"></i> Material is "${v}" — explanation required to start`;
+    explainWrap.style.display='block';
+  }
+}
+
+function setPhotoStage(stage){
+  currentPhotoStage = stage;
+  document.querySelectorAll('#photoStageTabs button').forEach(b=>b.classList.toggle('sel', b.dataset.stage===stage));
+  document.getElementById('photoStageNote').textContent = stage;
+}
+
+function setupPhotoDropzone(){
+  const zone = document.getElementById('photoDropzone');
+  if(!zone) return;
+  ['dragover','dragenter'].forEach(evt=>zone.addEventListener(evt, e=>{ e.preventDefault(); zone.classList.add('drag'); }));
+  ['dragleave','drop'].forEach(evt=>zone.addEventListener(evt, e=>{ e.preventDefault(); zone.classList.remove('drag'); }));
+  zone.addEventListener('drop', e=>{
+    if(e.dataTransfer.files && e.dataTransfer.files.length) handlePhotoFiles(e.dataTransfer.files);
+  });
+}
+
+// Take Picture / Upload / drag-drop all funnel through here. Each image is
+// downscaled client-side (max 1600px edge, JPEG q=0.8) so a full-resolution
+// phone camera photo doesn't blow up the POST payload to the Apps Script.
+async function handlePhotoFiles(fileList){
+  const files = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
+  for(const f of files){
+    try{
+      const dataUrl = await compressImage(f);
+      pendingPhotos.push({stage: currentPhotoStage, dataUrl, name: f.name});
+    }catch(err){
+      console.error('Photo processing failed', err);
+      showToast(`Couldn't process ${f.name}`, 'warn');
+    }
+  }
+  renderPhotoGrid();
+  document.getElementById('photoCameraInput').value = '';
+  document.getElementById('photoUploadInput').value = '';
+}
+
+function compressImage(file, maxDim=1600, quality=0.8){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let {width, height} = img;
+        if(width > maxDim || height > maxDim){
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePendingPhoto(idx){
+  pendingPhotos.splice(idx, 1);
+  renderPhotoGrid();
+}
+
+function renderPhotoGrid(){
+  const grid = document.getElementById('photoGrid');
+  if(!grid) return;
+  if(!pendingPhotos.length){ grid.innerHTML = ''; return; }
+  grid.innerHTML = pendingPhotos.map((p,i)=>`
+    <div class="photo-thumb">
+      <span class="photo-stage-badge">${escapeHtml(p.stage)}</span>
+      <img src="${p.dataUrl}" alt="${escapeHtml(p.name)}">
+      <button type="button" class="photo-remove" onclick="removePendingPhoto(${i})" title="Remove"><i class="fas fa-xmark"></i></button>
+    </div>
+  `).join('');
+}
+
+// Parses the append-only Photos log (same "[timestamp] By | Stage: X | url"
+// pattern the Apps Script writes) into clickable links grouped visually by
+// stage badge — this is the permanent project photo record for the task.
+function renderPhotoHistory(t){
+  const box = document.getElementById('photoHistory');
+  const raw = (getField(t,...FIELD.photos) || t['Photos'] || '').trim();
+  if(!raw){ box.innerHTML = '<span class="empty-log">No photos on file yet.</span>'; return; }
+  const entries = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  const links = entries.map(line=>{
+    const m = line.match(/Stage:\s*(\w+)\s*\|\s*(https?:\/\/\S+)/);
+    if(!m) return '';
+    return `<a href="${escapeHtml(m[2])}" target="_blank" rel="noopener" class="photo-history-link"><i class="fas fa-image"></i> ${escapeHtml(m[1])}</a>`;
+  }).filter(Boolean);
+  box.innerHTML = links.length ? links.join('') : '<span class="empty-log">No photos on file yet.</span>';
+}
+
+function clearForm(){
+  selectedTask = null;
+  matStatus = null;
+  originalStatusForSelected = null;
+  pendingPhotos = [];
+  renderPhotoGrid();
+  document.getElementById('editForm').style.display='none';
+  document.getElementById('taskPicker').value='';
+  document.getElementById('statusChangeFlag').classList.remove('show');
+  document.getElementById('fOwnerNotes').value = '';
+  document.getElementById('fApprovalStatus').value = 'Not Required';
+  document.getElementById('fVerifiedBy').value = '';
+  document.getElementById('fVerifiedAt').value = '';
+  document.getElementById('fRejectReason').value = '';
+}
+
+async function postToSheet(payload){
+  if(!CONFIG.appsScriptUrl || CONFIG.appsScriptUrl.startsWith('PASTE_')){
+    throw new Error('Apps Script URL not configured yet');
+  }
+  // Every write except the login call itself carries the session token —
+  // Apps Script verifies it and rejects the write if it's missing, expired,
+  // or doesn't match the role required for that action.
+  const body = (payload.action === 'login')
+    ? payload
+    : { ...payload, token: session ? session.token : null };
+
+  const res = await fetch(CONFIG.appsScriptUrl, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(()=>({}));
+
+  // If the backend rejected the token (expired, tampered, or wrong role),
+  // don't leave the person editing a form that can never save — kick back
+  // to the login screen with an explanation.
+  if(data && data.ok === false && payload.action !== 'login' && /session|token|log ?in/i.test(data.error||'')){
+    clearSession();
+    session = null;
+    showToast(data.error || 'Your session expired — please log in again.', 'error');
+    showLoginScreen();
+  }
+  return data;
+}
+
+async function submitTask(){
+  if(currentRole !== 'GC'){ showToast('Only the General Contractor\'s login can submit task updates', 'error'); return; }
+  if(!selectedTask){ showToast('Select a task first', 'error'); return; }
+  if(!matStatus){ showToast('Select a material status before submitting', 'error'); return; }
+
+  const updatedBy = document.getElementById('fUpdatedBy').value.trim();
+  if(!updatedBy){
+    showToast('Enter your name before submitting — every update needs to be attributable to someone', 'error');
+    document.getElementById('fUpdatedBy').focus();
+    return;
+  }
+
+  const newStatus = document.getElementById('fStatus').value;
+  const statusChanged = originalStatusForSelected && newStatus !== originalStatusForSelected;
+  const noteText = document.getElementById('fNotes').value.trim();
+
+  if(statusChanged && !noteText){
+    showToast('Execution Status is changing — add a short note explaining why before submitting', 'error');
+    document.getElementById('fNotes').focus();
+    return;
+  }
+
+  // Execution Status can only be set to "Verified / Closed" once the task
+  // has actually been Approved by the Owner's Representative below —
+  // closing out field execution is not the same thing as owner approval,
+  // and shouldn't be reachable by a GC on its own.
+  if(newStatus === 'Verified / Closed' && !isApproved(selectedTask)){
+    showToast('Execution Status can\'t be set to "Verified / Closed" until the Owner\'s Representative has set Approval Status to Approved, below. Submit your other updates first, then have the Owner\'s Rep approve it.', 'error');
+    document.getElementById('fStatus').focus();
+    return;
+  }
+
+  const explain = document.getElementById('fExplain').value.trim();
+  if(matStatus !== 'Ready' && matStatus !== 'Not Required' && !explain){
+    showToast('Material isn\'t Ready — you must explain your plan before this can be submitted', 'error');
+    document.getElementById('fExplain').focus();
+    return;
+  }
+
+  const timestamp = nowStamp();
+
+  // Build one append-only, attributed log entry. This never overwrites
+  // prior entries — it's prepended to whatever's already in the Notes
+  // column, so the full history rides along in the existing sheet column
+  // with no Apps Script/schema changes required.
+  const logLines = [`[${timestamp}] ${updatedBy}`];
+  if(statusChanged){
+    logLines.push(`  Execution Status: ${originalStatusForSelected} → ${newStatus}`);
+  }
+  if(noteText){
+    logLines.push(`  Note: ${noteText}`);
+  }
+  if(matStatus === 'Not Required'){
+    logLines.push(`  Material not required for this task.`);
+  } else if(matStatus !== 'Ready'){
+    logLines.push(`  Material not ready (${matStatus}): ${explain}`);
+  }
+  if(pendingPhotos.length){
+    const byStage = {};
+    pendingPhotos.forEach(p=>{ byStage[p.stage] = (byStage[p.stage]||0)+1; });
+    const summary = Object.keys(byStage).map(s=>`${byStage[s]} ${s}`).join(', ');
+    logLines.push(`  Photos attached: ${summary}`);
+  }
+  const existingLog = (selectedTask['Notes']||'').trim();
+  const newLogEntry = logLines.join('\n');
+  const fullLog = existingLog ? `${newLogEntry}\n\n${existingLog}` : newLogEntry;
+
+  const plannedLabor = document.getElementById('fLaborPlanned').value.trim();
+  const actualLabor = document.getElementById('fLaborActual').value.trim();
+  const laborUnit = document.getElementById('fLaborUnit').value;
+
+  const payload = {
+    action: 'updateTask',
+    taskId: selectedTask['Task ID'],
+    taskName: selectedTask['Task Name'],
+    assignedTo: document.getElementById('fAssigned').value.trim(),
+    driver: document.getElementById('fDriver').value.trim(),
+    plannedLabor: plannedLabor,
+    actualLabor: actualLabor,
+    laborUnit: laborUnit,
+    plannedStart: document.getElementById('fStart').value,
+    plannedFinish: document.getElementById('fFinish').value,
+    actualStart: document.getElementById('fActualStart').value,
+    actualFinish: document.getElementById('fActualFinish').value,
+    status: newStatus,
+    percentComplete: document.getElementById('fPercent').value,
+    notes: fullLog,
+    materialStatus: matStatus,
+    materialStatusExplanation: (matStatus === 'Ready' || matStatus === 'Not Required') ? '' : explain,
+    // Discrete accountability fields, in addition to the human-readable log
+    // above — harmless if the Apps Script/sheet doesn't use them yet, and
+    // ready to map to dedicated columns later if you want them broken out.
+    updatedBy: updatedBy,
+    updatedAt: timestamp,
+    statusChanged: statusChanged,
+    previousStatus: originalStatusForSelected,
+    newStatus: newStatus,
+    // Closeout accountability: who specifically declared this task done and
+    // when — distinct from "Last Updated By/At" (which changes on every
+    // minor edit). Since the GC party can have several different people
+    // working a task, this is what the OR actually needs to know before
+    // approving: who is vouching that it's finished. Only stamped on the
+    // transition that puts the task in front of the OR, not on every save.
+    submittedBy: newStatus === 'Pending Owner Verification' ? updatedBy : '',
+    submittedAt: newStatus === 'Pending Owner Verification' ? timestamp : '',
+    // Before/During/After photos queued in this session — base64 JPEGs,
+    // client-side compressed. The Apps Script endpoint needs updating to
+    // save these to Drive and log the resulting URLs into the Photos column.
+    photos: pendingPhotos.map(p => ({stage: p.stage, dataUrl: p.dataUrl, filename: p.name}))
+  };
+
+  try{
+    showToast(pendingPhotos.length ? 'Saving task update and uploading photos…' : 'Saving task update…');
+    await postToSheet(payload);
+    showToast(`✅ ${selectedTask['Task ID']} updated`);
+    lastUpdatedBy = updatedBy;
+    clearForm();
+    loadAll();
+  }catch(err){
+    showToast('Saved locally, but the sheet write failed: ' + err.message, 'warn');
+  }
+}
+
+// Look up a field on a row without needing an exact, case/whitespace-perfect
+// header match — a sheet column named "trade " or "Trade Name" would
+// otherwise cause every row to be silently dropped.
+function getField(row, ...candidates){
+  const keys = Object.keys(row);
+  for(const wanted of candidates){
+    const wantedNorm = wanted.toLowerCase().replace(/\s+/g,'');
+    const hit = keys.find(k => k.toLowerCase().replace(/\s+/g,'') === wantedNorm);
+    if(hit && row[hit]) return row[hit];
+  }
+  return '';
+}
+
+function setReportTab(tab){
+  currentReportTab = tab;
+  document.querySelectorAll('#reportTabs button').forEach(b=>{
+    b.classList.toggle('sel', b.dataset.tab===tab);
+  });
+  document.querySelectorAll('.report-view').forEach(v=>v.classList.remove('show'));
+  const map = {field:'reportField', accountability:'reportAccountability', ownerrep:'reportOwnerRep', verify:'reportVerify', labor:'reportLaborCost'};
+  document.getElementById(map[tab]).classList.add('show');
+  renderReports();
+}
+
+const EXEC_STATUS_ORDER = ['Not Started','Waiting Material','Ready to Start','Working','Waiting Inspection','Punch List','Pending Owner Verification','Verified / Closed'];
+
+function renderReports(){
+  renderFieldProgressReport();
+  renderAccountabilityReport();
+  renderOwnerRepReport();
+  renderVerificationReport();
+  renderLaborCostReport();
+}
+
+// Owner-facing rollup: every task with a parseable Budget and/or Actual
+// labor number, plus totals split by unit (Crew-Days vs $ vs any other
+// unit in use) since summing across units wouldn't mean anything.
+function renderLaborCostReport(){
+  const tbody = document.getElementById('laborCostReportBody');
+  const totalsBox = document.getElementById('laborCostTotals');
+  const rows = allTasks.map(t=>{
+    const planned = getField(t,...FIELD.plannedLabor) || t['Labor Budget (Crew-Days or $)'] || '';
+    const actual = getField(t,...FIELD.actualLabor);
+    const unit = laborUnitOf(t);
+    const pNum = parseLaborNumber(planned);
+    const aNum = parseLaborNumber(actual);
+    return {t, pNum, aNum, unit};
+  }).filter(r => r.pNum!==null || r.aNum!==null);
+
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">No tasks have Budget or Actual labor numbers on file yet.</td></tr>';
+    totalsBox.innerHTML = '';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r=>{
+    let varCell = '—', varCls = '';
+    if(r.pNum!==null && r.aNum!==null){
+      const diff = r.aNum - r.pNum;
+      varCls = diff>0 ? 'v-over' : (diff<0 ? 'v-under' : 'v-even');
+      varCell = diff>0 ? `+${formatLaborAmount(diff, r.unit)} over` : (diff<0 ? `${formatLaborAmount(diff, r.unit)} under` : 'On budget');
+    }
+    return `<tr>
+      <td>${escapeHtml(r.t['Task Name'])}</td>
+      <td>${formatLaborAmount(r.pNum, r.unit)}</td>
+      <td>${formatLaborAmount(r.aNum, r.unit)}</td>
+      <td class="lc-var-cell ${varCls ? 'v '+varCls : ''}">${varCell}</td>
+    </tr>`;
+  }).join('');
+
+  // Totals per unit — only where both budget and actual exist, so a task
+  // that's only budgeted (no actual logged yet) doesn't distort variance.
+  const byUnit = {};
+  rows.forEach(r=>{
+    if(!byUnit[r.unit]) byUnit[r.unit] = {budget:0, actual:0, hasBudget:false, hasActual:false};
+    if(r.pNum!==null){ byUnit[r.unit].budget += r.pNum; byUnit[r.unit].hasBudget = true; }
+    if(r.aNum!==null){ byUnit[r.unit].actual += r.aNum; byUnit[r.unit].hasActual = true; }
+  });
+  totalsBox.innerHTML = Object.keys(byUnit).map(u=>{
+    const d = byUnit[u];
+    const diff = d.actual - d.budget;
+    const cls = diff>0 ? 'v-over' : (diff<0 ? 'v-under' : 'v-even');
+    const label = diff>0 ? `+${formatLaborAmount(diff, u)} over` : (diff<0 ? `${formatLaborAmount(diff, u)} under` : 'On budget');
+    return `<div class="card">
+      <div class="u">${u==='$' ? 'Cost' : u}</div>
+      <div class="row"><span>Budget</span><b>${formatLaborAmount(d.budget, u)}</b></div>
+      <div class="row"><span>Actual</span><b>${formatLaborAmount(d.actual, u)}</b></div>
+      <div class="var ${cls}">${d.hasBudget && d.hasActual ? label : 'Incomplete data'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderFieldProgressReport(){
+  const tbody = document.getElementById('fieldProgressBody');
+  if(!allTasks.length){ tbody.innerHTML = '<tr><td colspan="2" class="empty">No tasks loaded yet.</td></tr>'; return; }
+  const counts = {};
+  EXEC_STATUS_ORDER.forEach(s=>counts[s]=0);
+  allTasks.forEach(t=>{
+    const v = normStatus(t['Status']);
+    counts[v] = (counts[v]||0) + 1;
+  });
+  tbody.innerHTML = Object.keys(counts).map(k=>`<tr><td>${escapeHtml(k)}</td><td>${counts[k]}</td></tr>`).join('');
+}
+
+function renderAccountabilityReport(){
+  const tbody = document.getElementById('accountabilityBody');
+  if(!allTasks.length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">No tasks loaded yet.</td></tr>'; return; }
+  const byDriver = {};
+  allTasks.forEach(t=>{
+    const driver = getField(t,...FIELD.driver) || 'Unassigned';
+    if(!byDriver[driver]) byDriver[driver] = {open:0, late:0};
+    if(isOpenTask(t)){
+      byDriver[driver].open++;
+      if(isLateTask(t)) byDriver[driver].late++;
+    }
+  });
+  const drivers = Object.keys(byDriver).sort((a,b)=>byDriver[b].open - byDriver[a].open);
+  if(!drivers.length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">No open tasks.</td></tr>'; return; }
+  tbody.innerHTML = drivers.map(d=>`<tr><td>${escapeHtml(d)}</td><td>${byDriver[d].open}</td><td>${byDriver[d].late ? `<span class="mat-chip mat-notready">${byDriver[d].late}</span>` : '0'}</td></tr>`).join('');
+}
+
+function renderOwnerRepReport(){
+  const tbody = document.getElementById('ownerRepReportBody');
+  if(!allTasks.length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">No tasks loaded yet.</td></tr>'; return; }
+  const withDates = allTasks.map(t=>{
+    const gcEntry = parseLatestLogEntry(t['Notes']);
+    const ownerLog = getField(t,...FIELD.ownerNotes);
+    const ownerEntry = parseLatestLogEntry(ownerLog);
+    const latest = ownerEntry && (!gcEntry || ownerEntry.date > gcEntry.date) ? ownerEntry : gcEntry;
+    return {t, latest, ownerNote: ownerEntry ? ownerEntry.note : ''};
+  }).filter(x=>x.latest && !isNaN(x.latest.date));
+  withDates.sort((a,b)=>b.latest.date - a.latest.date);
+  if(!withDates.length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">No activity logged on any task yet.</td></tr>'; return; }
+  tbody.innerHTML = withDates.slice(0,25).map(x=>`<tr>
+    <td>${escapeHtml(x.t['Task Name'])}</td>
+    <td>${relativeDaysLabel(daysSince(x.latest.date))}</td>
+    <td>${x.ownerNote ? escapeHtml(x.ownerNote) : '<span style="color:#8398a9;">No update received from Owner\'s Rep</span>'}</td>
+  </tr>`).join('');
+}
+
+function renderVerificationReport(){
+  const tbody = document.getElementById('verifyReportBody');
+  const relevant = allTasks.filter(t=>{
+    const a = normApproval(getField(t,...FIELD.approvalStatus));
+    const k = classifyStatus(t['Status']);
+    return a !== 'Not Required' || k === 'pendingverify' || k === 'closed';
+  });
+  if(!relevant.length){ tbody.innerHTML = '<tr><td colspan="3" class="empty">No tasks are in the approval workflow yet.</td></tr>'; return; }
+  tbody.innerHTML = relevant.map(t=>{
+    const a = normApproval(getField(t,...FIELD.approvalStatus));
+    let approvalCell;
+    if(a === 'Approved') approvalCell = `✅ ${escapeHtml(getField(t,...FIELD.verifiedBy))}`;
+    else if(a === 'Returned') approvalCell = '↩ Returned to GC';
+    else if(a === 'Pending') approvalCell = '⏳ Pending';
+    else approvalCell = '<span style="color:#8398a9;">Not Required</span>';
+    return `<tr>
+      <td>${escapeHtml(t['Task Name'])}</td>
+      <td>${escapeHtml(normStatus(t['Status']))}</td>
+      <td>${approvalCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  setReportTab('field');
+  setupPhotoDropzone();
+
+  session = loadSession();
+  if(session){
+    showApp();
+    applyRolePermissions();
+    loadAll();
+  } else {
+    showLoginScreen();
+  }
+
+  // Pressing Enter in the password field logs in, same as clicking the button.
+  document.getElementById('loginPassword').addEventListener('keydown', function(e){
+    if(e.key === 'Enter') doLogin();
+  });
+});
+</script>
+</body>
+</html>
